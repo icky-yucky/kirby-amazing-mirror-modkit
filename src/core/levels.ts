@@ -215,3 +215,26 @@ export function saveTileset(rom: Rom, level: Level, tiles: Uint8Array): SaveResu
   rom.writeBytes(writes);
   return { relocated, off, bytes: enc.length, original: cur.used };
 }
+
+// ---- where each collision value is used ----
+export interface ValueUsage { value: number; blocks: number; rooms: { tag: number; count: number }[] }
+
+/** For every collision value in the game: how many blocks use it and in which rooms (most blocks first). */
+export function collisionUsage(rom: Rom, levels: Level[], t: LevelTables = USA_TABLES): Map<number, ValueUsage> {
+  const out = new Map<number, ValueUsage>();
+  for (const l of levels) {
+    const c = readCollision(rom, l, t);
+    if (!c) continue;
+    const counts = new Array<number>(256).fill(0);
+    for (const v of c.values) counts[v]++;
+    counts.forEach((n, v) => {
+      if (!n) return;
+      let u = out.get(v);
+      if (!u) { u = { value: v, blocks: 0, rooms: [] }; out.set(v, u); }
+      u.blocks += n;
+      u.rooms.push({ tag: l.tag, count: n });
+    });
+  }
+  for (const u of out.values()) u.rooms.sort((a, b) => b.count - a.count);
+  return out;
+}

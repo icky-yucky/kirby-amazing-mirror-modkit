@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Collision value finder: every value is a button, the panel lists the rooms that use it (click to open), and a toggle highlights only that value. `docs/collision-values-by-room.md` lists them all.
 - Collision test arenas (labeled floor cells, one per collision value) and a tileset save function with relocation.
 - First batch of collision value results documented.
 

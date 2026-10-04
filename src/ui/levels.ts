@@ -1,5 +1,5 @@
 import {
-  CollisionInfo, Level, findLevels, levelName, readCollision, readMap, readTiles, saveCollision, saveMap, tileEntry,
+  CollisionInfo, Level, ValueUsage, collisionUsage, findLevels, levelName, readCollision, readMap, readTiles, saveCollision, saveMap, tileEntry,
 } from "../core/levels";
 import { Rom } from "../core/rom";
 
@@ -36,6 +36,7 @@ export class LevelEditor {
   private layer: Layer = "tiles";
   private selTile = 1;
   private collVal = 0x0d;
+  private usage = new Map<number, ValueUsage>();
   private painting = false;
   private dirty = false;
   private fillStart: { x: number; y: number } | null = null;
@@ -49,6 +50,8 @@ export class LevelEditor {
   open(rom: Rom): void {
     this.rom = rom;
     this.levels = findLevels(rom);
+    this.usage = collisionUsage(rom, this.levels);
+    this.buildPresets();
     const areas = [...new Set(this.levels.map((l) => l.area))];
     const sa = select("#lvArea");
     sa.textContent = "";
@@ -111,6 +114,7 @@ export class LevelEditor {
     this.drawColl();
     this.drawPicker();
     this.applyZoom();
+    this.showUsage();
     $("#lvTitle").textContent = `${levelName(l)} / scene ${l.tag}`;
     $("#lvInfo").textContent =
       `${l.w} x ${l.h} tiles. Tileset ${(this.tiles.length / 32) | 0} tiles at ROM 0x${l.tilesOff.toString(16).toUpperCase()}, ` +
@@ -154,6 +158,7 @@ export class LevelEditor {
   private drawCollCell(ctx: CanvasRenderingContext2D, x: number, y: number): void {
     const v = this.collValues[y * this.coll!.w + x];
     ctx.clearRect(x * 16, y * 16, 16, 16);
+    if (input("#lvOnly").checked && v !== this.collVal) return;
     const col = collColor(v);
     if (!col) return;
     ctx.fillStyle = col;
@@ -227,10 +232,12 @@ export class LevelEditor {
   private buildPresets(): void {
     const box = $("#lvCollPresets");
     box.textContent = "";
-    for (const v of COLL_PRESETS) {
+    const list = this.usage.size ? [...this.usage.keys()].sort((a, b) => a - b) : COLL_PRESETS;
+    for (const v of list) {
       const b = document.createElement("button");
       b.textContent = v.toString(16).padStart(2, "0");
-      b.title = COLL_NAMES[v] ?? "unverified";
+      const u = this.usage.get(v);
+      b.title = (COLL_NAMES[v] ?? "unverified") + (u ? ` /  room,  blocks` : "");
       b.dataset.v = String(v);
       b.onclick = () => this.setCollVal(v);
       box.appendChild(b);
@@ -243,6 +250,27 @@ export class LevelEditor {
     input("#lvCollVal").value = this.collVal.toString(16).padStart(2, "0");
     $("#lvCollName").textContent = COLL_NAMES[this.collVal] ?? "not yet understood";
     document.querySelectorAll<HTMLElement>("#lvCollPresets button").forEach((b) => b.classList.toggle("on", Number(b.dataset.v) === this.collVal));
+    this.showUsage();
+    this.drawColl();
+  }
+
+  /** Lists the rooms that use the selected collision value; clicking one opens it. */
+  private showUsage(): void {
+    const box = $("#lvCollUsage"), u = this.usage.get(this.collVal);
+    box.textContent = "";
+    if (!u) { box.textContent = this.usage.size ? "Not used by any room." : ""; return; }
+    box.append(`Used in ${u.rooms.length} room${u.rooms.length > 1 ? "s" : ""} (${u.blocks} blocks):`, document.createElement("br"));
+    for (const r of u.rooms.slice(0, 24)) {
+      const l = this.levels.find((x) => x.tag === r.tag);
+      if (!l) continue;
+      const b = document.createElement("button");
+      b.textContent = `A${l.area}-R${String(l.room).padStart(2, "0")} (${r.count})`;
+      b.title = `${levelName(l)}: ${r.count} blocks`;
+      b.className = this.cur && this.cur.tag === r.tag ? "here" : "";
+      b.onclick = () => this.selectLevel(l);
+      box.appendChild(b);
+    }
+    if (u.rooms.length > 24) box.append(` +${u.rooms.length - 24} more`);
   }
 
   // ---- editing ----
@@ -346,6 +374,7 @@ export class LevelEditor {
     $("#lvLayerTiles").onclick = () => this.setLayer("tiles");
     $("#lvLayerColl").onclick = () => this.setLayer("coll");
     input("#lvShowColl").onchange = () => this.drawColl();
+    input("#lvOnly").onchange = () => this.drawColl();
     input("#lvCollVal").onchange = () => {
       const v = parseInt(input("#lvCollVal").value, 16);
       this.setCollVal(Number.isFinite(v) ? v : this.collVal);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findLevels, findFreeSpace, readCollision, readMap, readTiles, saveCollision, saveMap, saveTileset, tileEntry } from "../src/core/levels";
+import { collisionUsage, findLevels, findFreeSpace, readCollision, readMap, readTiles, saveCollision, saveMap, saveTileset, tileEntry } from "../src/core/levels";
 import { rleDecode, rleEncode } from "../src/core/rle";
 import { lz77Decode, lz77Encode } from "../src/core/lz77";
 import { Rom } from "../src/core/rom";
@@ -239,5 +239,18 @@ describe("arena glyphs", () => {
     expect(px(0, 0)).toBe(2);             // background in the corner
     expect(() => glyphTile("Z", 1, 0)).toThrow();
     expect(poleTile(5).some((b) => b !== 0)).toBe(true);
+  });
+});
+
+describe("collision usage", () => {
+  it("counts blocks and rooms per value, most blocks first", () => {
+    const { rom, coll } = buildLevelRom(40, 20);
+    const levels = findLevels(rom, T);
+    const u = collisionUsage(rom, levels, T);
+    const expected13 = coll.filter((v) => v === 0x0d).length;
+    expect(u.get(0x0d)!.blocks).toBe(expected13);
+    expect(u.get(0x0d)!.rooms).toEqual([{ tag: 2, count: expected13 }]);
+    expect(u.get(0)!.blocks).toBe(coll.length - expected13);
+    expect(u.has(0x55)).toBe(false);
   });
 });
