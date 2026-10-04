@@ -341,6 +341,20 @@ function renderSlots(): void {
       $("#colR").scrollIntoView({ behavior: "smooth" });
     };
     card.append(rowSel, rowDiv, btn);
+    if (i === 0) {
+      const mk = document.createElement("label");
+      mk.className = "small";
+      mk.title = "Gives baseline Kirby Meta Knight's colors (navy body, gold feet). Colors only: his sprites and moves are not included.";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = P.isMetaKnightSkin();
+      cb.onchange = () => write(P.metaKnightSkin(cb.checked));
+      mk.append(cb, " Meta Knight colors");
+      const hint = document.createElement("div");
+      hint.className = "small dim";
+      hint.textContent = "Colors only. Uncheck to restore pink Kirby.";
+      card.append(mk, hint);
+    }
     if (s.overlay) {
       const n = document.createElement("div");
       n.className = "small dim";

@@ -12,6 +12,7 @@ export interface ColorSlot { script: number; rowAddr: number; overlay: boolean }
 export interface ColorTable { tbl: number; slots: ColorSlot[] }
 
 export const SHARED_ROW = 1;
+export const META_KNIGHT = { body: "#3b47b0", shoes: "#e3a52b" };
 const SLOT_NAMES = ["Kirby: baseline (pink)", "Friend 1 (yellow)", "Friend 2 (red)", "Friend 3 (green)"];
 export const slotName = (i: number): string => (i < 4 ? SLOT_NAMES[i] : `Spray paint ${i - 3}`);
 
@@ -107,6 +108,31 @@ export class Project {
       const hue = t[0] + (m[0] - b[0]) * 0.5;
       return { off: this.palOff(row, i), val: hslToCol(hue, sat, lit) };
     });
+  }
+
+  /**
+   * Meta Knight color scheme for baseline Kirby (slot 0): navy body, gold feet. This only changes
+   * colors; Meta Knight's own sprites and moves are not part of this swap.
+   * Returns the writes that switch it on, or restore Kirby's original colors when off.
+   */
+  metaKnightSkin(on: boolean): Write[] {
+    const row = this.slotRow(0);
+    if (!on) {
+      return Array.from({ length: 11 }, (_, k) => k + 1).map((i) => {
+        const o = this.palOff(row, i);
+        return { off: o, val: this.rom.origU16(o) };
+      });
+    }
+    return [
+      ...this.rampRecolor(row, [2, 3, 4, 5, 6, 7, 8], 4, META_KNIGHT.body),
+      ...this.rampRecolor(row, [9, 10, 11], 9, META_KNIGHT.shoes),
+    ];
+  }
+
+  /** True when slot 0 currently wears the Meta Knight colors. */
+  isMetaKnightSkin(): boolean {
+    if (!this.slots) return false;
+    return this.metaKnightSkin(true).every((w) => this.rom.u16(w.off) === w.val);
   }
 
   /** Most-used non-dark palette index across every animation that draws with this row. */

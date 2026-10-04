@@ -183,6 +183,24 @@ describe("Project and Kirby color slots", () => {
     expect(lum(vals[0])).toBeGreaterThan(lum(vals[6]));
     expect(p).toBeTruthy();
   });
+  it("Meta Knight colors switch on and restore Kirby exactly when off", () => {
+    const rom = buildRom();
+    const p = Project.open(rom)!;
+    expect(p.isMetaKnightSkin()).toBe(false);
+    rom.writeColors(p.metaKnightSkin(true));
+    expect(p.isMetaKnightSkin()).toBe(true);
+    expect(rom.anyChanged()).toBe(true);
+    rom.writeColors(p.metaKnightSkin(false));
+    expect(p.isMetaKnightSkin()).toBe(false);
+    expect(rom.anyChanged()).toBe(false);
+  });
+  it("Meta Knight colors only touch slot 0 and leave friends alone", () => {
+    const rom = buildRom();
+    const p = Project.open(rom)!;
+    const friendRows = [1, 2, 3].map((i) => p.slotRow(i));
+    rom.writeColors(p.metaKnightSkin(true));
+    for (const row of friendRows) for (let i = 1; i < 12; i++) expect(p.isModified(row, i)).toBe(false);
+  });
   it("overallRecolor leaves near-black and near-white colors alone", () => {
     const rom = buildRom();
     rom.writeColors([

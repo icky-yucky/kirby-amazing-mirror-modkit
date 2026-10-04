@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.1
+- Kirby colors: "Meta Knight colors" checkbox on the baseline Kirby slot (colors only; uncheck restores pink).
+
 ## 0.3.0
 - Migrated the app to TypeScript (Vite, single-file build) with typed core modules and unit tests.
 - CI: typecheck, tests and build on every push; releases attach the built HTML files.
