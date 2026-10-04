@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kirby Sprite Studio</title>
+</head>
+<body>
+<header>
+  <h1>Kirby Sprite Studio</h1>
+  <button id="btnOpen" class="primary">Open ROM...</button>
+  <input id="file" type="file" accept=".gba,.bin,.rom" hidden>
+  <span id="romInfo" class="dim small">No ROM loaded</span>
+  <span style="flex:1"></span>
+  <button id="btnUndo" disabled>Undo</button>
+  <button id="btnReset" disabled>Reset all</button>
+  <button id="btnSaveEdits" disabled>Save edits...</button>
+  <button id="btnLoadEdits" disabled>Load edits...</button>
+  <input id="editsFile" type="file" accept=".json" hidden>
+  <button id="btnIps" disabled>Download IPS patch</button>
+  <button id="btnRom" class="primary" disabled>Download modded ROM</button>
+</header>
+
+<main>
+  <div id="welcome">
+    <h2 style="font-size:20px;color:var(--text);text-transform:none">Browse every sprite in your Kirby &amp; the Amazing Mirror ROM and recolor it</h2>
+    <p>Open your own ROM (or drop it on this page). Pick a sprite, pick an animation and frame, see the fully assembled sprite, then click any pixel to pick its color and change it.</p>
+    <p>Everything runs locally in your browser. Your original file is never modified: you download a modded copy or an IPS patch.</p>
+  </div>
+
+  <section id="colK" hidden style="grid-column:1/-1">
+    <h2>Kirby colors: player colors &amp; spray paints</h2>
+    <div class="small dim">The game has 16 Kirby color slots: the baseline pink Kirby, three friends, and the spray paints. Each slot points at a palette row. Pick a <b>Body</b> or <b>Shoes</b> color to recolor a slot with automatic shading, change which palette row a slot uses, or open the full editor. Edit slot 0 to change baseline Kirby; slots 1-3 are your friends.</div>
+    <div id="slots"></div>
+  </section>
+
+  <section id="colL" hidden>
+    <h2>1 &middot; Pick a sprite</h2>
+    <div class="row"><label class="full">Sprite <select id="selGroup" class="full"></select></label></div>
+    <div id="gallery" title="Click a sprite"></div>
+    <div class="row"><label class="full">Animation <select id="selAnim" class="full"></select></label></div>
+    <div class="note" id="groupNote"></div>
+  </section>
+
+  <section id="colM" hidden>
+    <h2>2 &middot; Assembled sprite: click a pixel</h2>
+    <div class="row">
+      <label>Frame <select id="selFrame"></select></label>
+      <button id="btnPrev" title="Previous frame (left arrow)">&#9664;</button>
+      <button id="btnNext" title="Next frame (right arrow)">&#9654;</button>
+      <button id="btnPlay">&#9654; Play</button>
+      <label>Zoom <select id="selZoom"><option>auto</option><option>4</option><option>6</option><option>8</option><option>10</option><option>12</option><option>16</option></select></label>
+    </div>
+    <div class="row">
+      <span class="dim small">Click does:</span>
+      <button id="modePick" class="on" title="Select the palette color under the pixel, then recolor it">Pick color</button>
+      <button id="modePaint" title="Set the clicked pixel to the selected palette color (edits tile data)">Paint pixel</button>
+      <label class="small"><input id="chkIso" type="checkbox"> highlight selected color</label>
+    </div>
+    <div id="stageWrap"><canvas id="stage" width="64" height="64"></canvas></div>
+    <div id="hover" class="small mono dim" style="min-height:18px;margin-top:6px">&nbsp;</div>
+    <div id="film"></div>
+  </section>
+
+  <section id="colR" hidden>
+    <h2>3 &middot; Colors</h2>
+    <div class="row"><label class="full">Palette <select id="selPal" class="full"></select></label></div>
+    <div class="row"><div class="strip" id="palStrip"></div><span id="palInfo" class="small dim"></span></div>
+    <div class="swatches" id="swatches"></div>
+    <div class="row">
+      <label>Color <input id="picker" type="color" value="#ff88aa" disabled></label>
+      <label class="small mono">R<input id="inR" type="number" min="0" max="31" disabled></label>
+      <label class="small mono">G<input id="inG" type="number" min="0" max="31" disabled></label>
+      <label class="small mono">B<input id="inB" type="number" min="0" max="31" disabled></label>
+      <span id="selInfo" class="small dim"></span>
+    </div>
+    <div class="note" id="shareNote"></div>
+    <h2 style="margin-top:14px">Overall color</h2>
+    <div class="row">
+      <label>Recolor everything to <input id="overallColor" type="color" value="#4080ff"></label>
+      <span id="overallInfo" class="small dim"></span>
+    </div>
+    <div class="small dim">Finds this sprite's main color and shifts the whole palette toward your pick (shading kept). Applies to every frame of every animation that uses this palette.</div>
+    <h2 style="margin-top:14px">Adjust whole palette</h2>
+    <div class="row">
+      <label>Apply to
+        <select id="scope"><option value="sel">selected color</option><option value="row" selected>whole palette</option></select></label>
+    </div>
+    <div class="slider"><span>Hue</span><input id="sHue" type="range" min="-180" max="180" value="0"><span id="vHue" class="mono">0&deg;</span></div>
+    <div class="slider"><span>Saturation</span><input id="sSat" type="range" min="-100" max="100" value="0"><span id="vSat" class="mono">0</span></div>
+    <div class="slider"><span>Brightness</span><input id="sLit" type="range" min="-100" max="100" value="0"><span id="vLit" class="mono">0</span></div>
+    <div class="row">
+      <button id="btnApplyHSL" class="primary">Apply</button>
+      <button id="btnGray">Grayscale</button>
+      <button id="btnInvert">Invert</button>
+      <select id="swap"><option value="">swap channels...</option><option value="rbg">R,B,G</option><option value="grb">G,R,B</option><option value="gbr">G,B,R</option><option value="brg">B,R,G</option><option value="bgr">B,G,R</option></select>
+    </div>
+    <div class="small dim">Sliders preview live; <b>Apply</b> writes to the ROM copy. Color 0 is transparent and is never changed by these tools.</div>
+  </section>
+</main>
+
+<div id="drop">Drop ROM here</div>
+<div id="toast" class="toast"></div>
+
+<script type="module" src="./ui/main.ts"></script>
+</body>
+</html>

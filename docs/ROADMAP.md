@@ -7,6 +7,7 @@ Reverse engineering is done one system at a time; each system gets documented fo
 - [x] Sprite Studio (browse, assemble, recolor, paint)
 - [x] Kirby color slots and spray paints
 - [x] Overall color tool
+- [x] TypeScript migration, tests, CI
 
 ## Next
 - [ ] **Enemies** - find the enemy definition tables (health, contact damage, copy ability, sprite/palette); editor

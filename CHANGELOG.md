@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
+- Migrated the app to TypeScript (Vite, single-file build) with typed core modules and unit tests.
+- CI: typecheck, tests and build on every push; releases attach the built HTML files.
 - Overall color tool: recolor a whole sprite palette around its dominant color.
 
 ## 0.2.0

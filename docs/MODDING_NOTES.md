@@ -1,8 +1,8 @@
 # Kirby & the Amazing Mirror (USA) - verified ROM notes
 
 Everything here was checked against the real game in mGBA (not guessed). Offsets are ROM file offsets
-(GBA address = 0x08000000 + offset). Tools: `app/KirbySpriteStudio.html` (sprite/palette/color-slot editor),
-`app/KirbyPaletteLab.html` (raw palette/tile viewer), `tools/mGBA-*` (emulator), `tools/radare2-*` (disassembler),
+(GBA address = 0x08000000 + offset). Tools: `src/KirbySpriteStudio.html` (build: `npm run build`) (sprite/palette/color-slot editor),
+`src/public/KirbyPaletteLab.html` (raw palette/tile viewer), `tools/mGBA-*` (emulator), `tools/radare2-*` (disassembler),
 `tools/dbg/*.ps1` (GDB-stub helpers: launch, attach, key input, breakpoints).
 
 ## Sprites (all verified)
