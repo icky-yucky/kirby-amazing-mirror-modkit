@@ -23,7 +23,7 @@ public class G {
   public void WriteMem(uint addr, byte[] d){ StringBuilder sb=new StringBuilder(); foreach(byte b in d) sb.Append(b.ToString("x2")); Send("M"+addr.ToString("x")+","+d.Length.ToString("x")+":"+sb.ToString()); Recv(); }
 }
 '@ -ReferencedAssemblies System.Windows.Forms, System.Drawing
-$script:VK = @{ Enter=0x0D; Esc=0x1B; X=0x58; Z=0x5A; Right=0x27; Left=0x25; Up=0x26; Down=0x28; A=0x41; S=0x53; BackSpace=0x08 }
+$script:VK = @{ Enter=0x0D; F1=0x70; Esc=0x1B; X=0x58; Z=0x5A; Right=0x27; Left=0x25; Up=0x26; Down=0x28; A=0x41; S=0x53; BackSpace=0x08 }
 function FromHex($s){ $b = New-Object byte[] ($s.Length/2); for($i=0;$i -lt $b.Length;$i++){ $b[$i]=[Convert]::ToByte($s.Substring($i*2,2),16) }; ,$b }
 function Get-Regs($g){ $g.Send("g"); $regs = $g.Recv(); for ($k = 0; $k -lt 17; $k++) { [BitConverter]::ToUInt32((FromHex $regs.Substring($k*8, 8)),0) } }
 function Key($h,$vk,$ms=90){ [G]::Front($h); Start-Sleep -Milliseconds 30; if ([G]::GetForegroundWindow() -eq $h) { [G]::Tap([byte]$vk,$ms) } }
