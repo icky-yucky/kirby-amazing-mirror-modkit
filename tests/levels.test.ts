@@ -254,3 +254,23 @@ describe("collision usage", () => {
     expect(u.has(0x55)).toBe(false);
   });
 });
+
+describe("collision numbers and colors", () => {
+  it("numbers non-empty values ascending, so 1 to 15 match the hex values", async () => {
+    const { collisionOrder } = await import("../src/core/collcolor");
+    const order = collisionOrder([0, 0x0d, 5, 5, 0x14, 1, 0x48, 0x0f]);
+    expect(order).toEqual([1, 5, 0x0d, 0x0f, 0x14, 0x48]);
+    expect(collisionOrder([0])).toEqual([]);
+  });
+  it("gives every value its own color, solid ground red, empty none", async () => {
+    const { collisionOrder, collisionStyle, cssColor } = await import("../src/core/collcolor");
+    const order = collisionOrder(Array.from({ length: 80 }, (_, i) => i));      // 79 non-empty values
+    const colors = new Set<string>();
+    for (const v of order) colors.add(cssColor(collisionStyle(v, order)!));
+    expect(colors.size).toBe(order.length);
+    expect(collisionStyle(0, order)).toBeNull();
+    expect(collisionStyle(0x0d, order)!.h).toBe(0);
+    expect(collisionStyle(0x0d, order)!.number).toBe(order.indexOf(0x0d) + 1);
+    expect(collisionStyle(200, [1, 2])).not.toBeNull();                          // values outside the list still get a color
+  });
+});

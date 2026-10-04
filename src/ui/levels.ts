@@ -1,3 +1,4 @@
+import { CollisionStyle, collisionOrder, collisionStyle, cssColor } from "../core/collcolor";
 import {
   CollisionInfo, Level, ValueUsage, collisionUsage, findLevels, levelName, readCollision, readMap, readTiles, saveCollision, saveMap, tileEntry,
 } from "../core/levels";
@@ -13,13 +14,6 @@ type Layer = "tiles" | "coll";
 /** Values the game uses a lot, shown as quick buttons. Only 0 and 0x0D are verified in game. */
 const COLL_NAMES: Record<number, string> = { 0: "empty", 0x0d: "solid ground", 5: "slope", 6: "slope", 7: "slope", 8: "slope" };
 const COLL_PRESETS = [0x00, 0x0d, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0f, 0x48, 0x50, 0xf0, 0xf2, 0x55, 0x56, 0x64];
-
-function collColor(v: number): string {
-  if (v === 0) return "";
-  if (v === 0x0d) return "rgba(255,60,60,0.45)";
-  const hue = (v * 47) % 360;
-  return `hsla(${hue},85%,55%,0.5)`;
-}
 
 /** Tile and collision editor for the game's rooms. Edits are written to the ROM on every stroke. */
 export class LevelEditor {
@@ -37,6 +31,7 @@ export class LevelEditor {
   private selTile = 1;
   private collVal = 0x0d;
   private usage = new Map<number, ValueUsage>();
+  private order: number[] = [];                  // collision numbers: order[n - 1] is the value
   private painting = false;
   private dirty = false;
   private fillStart: { x: number; y: number } | null = null;
@@ -51,6 +46,7 @@ export class LevelEditor {
     this.rom = rom;
     this.levels = findLevels(rom);
     this.usage = collisionUsage(rom, this.levels);
+    this.order = collisionOrder(this.usage.keys());
     this.buildPresets();
     const areas = [...new Set(this.levels.map((l) => l.area))];
     const sa = select("#lvArea");
@@ -159,14 +155,18 @@ export class LevelEditor {
     const v = this.collValues[y * this.coll!.w + x];
     ctx.clearRect(x * 16, y * 16, 16, 16);
     if (input("#lvOnly").checked && v !== this.collVal) return;
-    const col = collColor(v);
-    if (!col) return;
-    ctx.fillStyle = col;
+    const st = collisionStyle(v, this.order);
+    if (!st) return;
+    ctx.fillStyle = cssColor(st, 0.62);
     ctx.fillRect(x * 16, y * 16, 16, 16);
     if (v !== 0x0d && Number(select("#lvZoom").value) >= 3) {
+      const label = String(st.number);
+      ctx.font = "bold 9px monospace";
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#000";
+      ctx.strokeText(label, x * 16 + 2, y * 16 + 11);
       ctx.fillStyle = "#fff";
-      ctx.font = "bold 8px monospace";
-      ctx.fillText(v.toString(16), x * 16 + 2, y * 16 + 10);
+      ctx.fillText(label, x * 16 + 2, y * 16 + 11);
     }
   }
 
@@ -232,12 +232,17 @@ export class LevelEditor {
   private buildPresets(): void {
     const box = $("#lvCollPresets");
     box.textContent = "";
-    const list = this.usage.size ? [...this.usage.keys()].sort((a, b) => a - b) : COLL_PRESETS;
+    const list = this.order.length ? this.order : COLL_PRESETS;
     for (const v of list) {
+      const st = collisionStyle(v, this.order);
       const b = document.createElement("button");
-      b.textContent = v.toString(16).padStart(2, "0");
+      const n = document.createElement("b"), h = document.createElement("i");
+      n.textContent = String(st ? st.number : v);
+      h.textContent = v.toString(16).padStart(2, "0");
+      b.append(n, h);
+      if (st) { b.style.background = cssColor(st); b.style.borderColor = cssColor({ ...st, l: st.l - 18 }); }
       const u = this.usage.get(v);
-      b.title = (COLL_NAMES[v] ?? "unverified") + (u ? ` /  room,  blocks` : "");
+      b.title = `Collision #${st ? st.number : "?"} (0x${v.toString(16).padStart(2, "0")}): ${COLL_NAMES[v] ?? "behavior not yet known"}` + (u ? ` / ${u.rooms.length} room${u.rooms.length > 1 ? "s" : ""}, ${u.blocks} blocks` : "");
       b.dataset.v = String(v);
       b.onclick = () => this.setCollVal(v);
       box.appendChild(b);
@@ -248,7 +253,10 @@ export class LevelEditor {
   private setCollVal(v: number): void {
     this.collVal = v & 255;
     input("#lvCollVal").value = this.collVal.toString(16).padStart(2, "0");
-    $("#lvCollName").textContent = COLL_NAMES[this.collVal] ?? "not yet understood";
+    const st = collisionStyle(this.collVal, this.order);
+    input("#lvCollNum").value = st && this.order.includes(this.collVal) ? String(st.number) : "";
+    $("#lvCollName").textContent = (st ? `collision #${st.number}: ` : "empty: ") + (COLL_NAMES[this.collVal] ?? "behavior not yet known");
+    $("#lvCollName").style.color = st ? cssColor({ ...st, l: Math.max(st.l, 58) }) : "";
     document.querySelectorAll<HTMLElement>("#lvCollPresets button").forEach((b) => b.classList.toggle("on", Number(b.dataset.v) === this.collVal));
     this.showUsage();
     this.drawColl();
@@ -375,6 +383,10 @@ export class LevelEditor {
     $("#lvLayerColl").onclick = () => this.setLayer("coll");
     input("#lvShowColl").onchange = () => this.drawColl();
     input("#lvOnly").onchange = () => this.drawColl();
+    input("#lvCollNum").onchange = () => {
+      const n = Math.trunc(Number(input("#lvCollNum").value));
+      if (n >= 1 && n <= this.order.length) this.setCollVal(this.order[n - 1]);
+    };
     input("#lvCollVal").onchange = () => {
       const v = parseInt(input("#lvCollVal").value, 16);
       this.setCollVal(Number.isFinite(v) ? v : this.collVal);
@@ -412,7 +424,7 @@ export class LevelEditor {
       if (c && l) {
         if (this.layer === "coll") {
           const v = this.collValues[c.y * this.coll!.w + c.x];
-          $("#lvHover").textContent = `block (${c.x},${c.y}) collision 0x${v.toString(16).padStart(2, "0")}${COLL_NAMES[v] ? " (" + COLL_NAMES[v] + ")" : ""}`;
+          $("#lvHover").textContent = `block (${c.x},${c.y}) collision ${v ? "#" + (this.order.indexOf(v) + 1) + " " : ""}0x${v.toString(16).padStart(2, "0")}${COLL_NAMES[v] ? " (" + COLL_NAMES[v] + ")" : ""}`;
         } else {
           const en = this.entries[c.y * l.w + c.x];
           $("#lvHover").textContent = `(${c.x},${c.y}) entry 0x${en.toString(16).padStart(4, "0")}: tile ${en & 1023}, palette ${en >> 12}${en & 0x400 ? ", hflip" : ""}${en & 0x800 ? ", vflip" : ""}`;

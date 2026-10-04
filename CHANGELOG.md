@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Collision numbers (#1 to #79) and one distinct color per value, shared by the value buttons, the map overlay and the docs; jump to a value by its number.
 - Collision value finder: every value is a button, the panel lists the rooms that use it (click to open), and a toggle highlights only that value. `docs/collision-values-by-room.md` lists them all.
 - Collision test arenas (labeled floor cells, one per collision value) and a tileset save function with relocation.
 - First batch of collision value results documented.
