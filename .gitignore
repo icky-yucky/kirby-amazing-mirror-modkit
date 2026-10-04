@@ -19,3 +19,4 @@ tools/dbg/dump/
 tools/states/
 tools/strips/
 tools/dbg/vt/
+tools/arena/

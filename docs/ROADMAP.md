@@ -16,7 +16,7 @@ Reverse engineering is done one system at a time; each system gets documented fo
 - [ ] Items and collectibles (spray paints, treasures, food)
 - [x] Room tile layers: viewer and editor (experimental)
 - [x] Room collision maps: located, viewer and editor (only 0 and 0D understood)
-- [ ] Collision value meanings (slopes, ice, hazards, doors), then enemy and object placement
+- [ ] Collision value meanings (first batch tested; arenas built for the rest) (slopes, ice, hazards, doors), then enemy and object placement
 - [ ] Text and dialogue
 - [ ] Music and sound effects
 - [ ] Engine symbol map (radare2 project) for the object system, VBlank handler, palette/DMA code

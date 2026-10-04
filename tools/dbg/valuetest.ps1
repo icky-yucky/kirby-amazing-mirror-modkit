@@ -6,10 +6,10 @@
 # This script presses keys in the mGBA window it controls: do not use the keyboard while it runs.
 param([string]$Values = "0,13", [int]$Start = 1, [int]$Len = 4, [int]$Row = 9, [int]$RamBase = 0x2024ED0, [int]$Width = 86,
       [double]$WalkSec = 1.6, [double]$SlideSec = 1.2, [string]$Out = "$PSScriptRoot\vt\results.csv",
-      [string]$Expected = "$PSScriptRoot\vt\expected_collision.bin")
+      [string]$CollisionFile = "$PSScriptRoot\vt\expected_collision.bin")
 . "$PSScriptRoot\lib.ps1"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
-$expected = [IO.File]::ReadAllBytes($Expected)
+$want = [IO.File]::ReadAllBytes($CollisionFile)
 $g = New-Object G; $g.Connect(2345); try { $null = $g.Recv() } catch {}
 $h = (Get-Process mGBA | Select-Object -First 1).MainWindowHandle
 function Wait-Run($sec) { $t = Get-Date; while (((Get-Date) - $t).TotalSeconds -lt $sec) { Start-Sleep -Milliseconds 50 } }
@@ -26,12 +26,18 @@ function Sample($g) {
   $g.Send("c")
   return @($kx, $ky, [BitConverter]::ToUInt16($cam, 0))
 }
-# true when the game is paused in stage 1 with the untouched collision map in RAM
+# true when we are really standing in stage 1: its grass floor tiles are on screen (BG3 row 17) AND the untouched collision map is in RAM.
+# The collision map alone is not enough, the game preloads it while still in the hub.
 function In-Stage1 {
   $g.Raw(3); try { $null = $g.Recv() } catch {}
-  $live = $g.Mem($RamBase, $expected.Length)
-  for ($i = 0; $i -lt $expected.Length; $i++) { if ($live[$i] -ne $expected[$i]) { return $false } }
-  return $true
+  $vram = $g.Mem(0x06000000 + 30 * 0x800 + 17 * 64, 16)
+  $floor = @(0xb1, 0xb2, 0xb3, 0xb0, 0xb1, 0xb2, 0xb3, 0xb0)
+  $tilesOk = 0
+  for ($i = 0; $i -lt 8; $i++) { if ([BitConverter]::ToUInt16($vram, $i * 2) -eq $floor[$i]) { $tilesOk++ } }
+  $live = $g.Mem($RamBase, $want.Length)
+  $same = 0
+  for ($i = 0; $i -lt $want.Length; $i++) { if ($live[$i] -eq $want[$i]) { $same++ } }
+  return [bool]($tilesOk -eq 8 -and $same -eq $want.Length)
 }
 $g.Send("c")
 "value,phase,t,kx,ky,cam" | Set-Content $Out
@@ -42,8 +48,10 @@ try {
     for ($attempt = 1; $attempt -le 2 -and -not $ok; $attempt++) {
       Release-Keys
       Key $h $VK["F1"] 150; Wait-Run 2.5
-      Key $h $VK["Up"] 250; Wait-Run 6.3
-      if (In-Stage1) { $ok = $true } else { $g.Send("c"); Write-Host "value ${v}: not in stage 1 (attempt $attempt), retrying" }
+      Key $h $VK["Up"] 250
+      $until = (Get-Date).AddSeconds(16)                  # the stage takes a while to load: poll instead of guessing a delay
+      while (-not $ok -and (Get-Date) -lt $until) { Wait-Run 1.2; if (In-Stage1) { $ok = $true } else { $g.Send("c") } }
+      if (-not $ok) { Write-Host "value ${v}: not in stage 1 after 16s (attempt $attempt), retrying" }
     }
     if (-not $ok) {
       "$v,NOT_IN_STAGE,0,-1,-1,0" | Add-Content $Out

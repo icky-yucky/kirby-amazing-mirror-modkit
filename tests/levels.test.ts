@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findLevels, findFreeSpace, readCollision, readMap, saveCollision, saveMap, tileEntry } from "../src/core/levels";
+import { findLevels, findFreeSpace, readCollision, readMap, readTiles, saveCollision, saveMap, saveTileset, tileEntry } from "../src/core/levels";
 import { rleDecode, rleEncode } from "../src/core/rle";
 import { lz77Decode, lz77Encode } from "../src/core/lz77";
 import { Rom } from "../src/core/rom";
@@ -197,5 +197,47 @@ describe("collision", () => {
     expect(rom.u32(c.desc + 4)).toBeGreaterThan(rom.u32(c.desc));
     rom.undo();
     expect(Array.from(rom.data)).toEqual(before);
+  });
+});
+
+describe("tileset save", () => {
+  it("saves a changed tileset in place when it fits", () => {
+    const { rom } = buildLevelRom();
+    const lv = findLevels(rom, T)[0];
+    const tiles = readTiles(rom, lv).slice();
+    tiles.fill(0, 0, 32);
+    const r = saveTileset(rom, lv, tiles);
+    expect(Array.from(readTiles(rom, lv))).toEqual(Array.from(tiles));
+    expect(r.original).toBeGreaterThan(0);
+  });
+  it("relocates a tileset that grew, updating the descriptor pointers; undo restores", () => {
+    const { rom } = buildLevelRom();
+    const lv = findLevels(rom, T)[0];
+    const before = Array.from(rom.data);
+    const r0 = rnd(77);
+    const noisy = Uint8Array.from({ length: 64 * 32 }, () => Math.floor(r0() * 256));
+    const r = saveTileset(rom, lv, noisy);
+    expect(r.relocated).toBe(true);
+    expect(rom.u32(lv.tilesDesc)).toBe(0x08000000 + r.off);
+    expect(rom.u32(lv.tilesDesc + 4)).toBeGreaterThan(rom.u32(lv.tilesDesc));
+    const lv2 = findLevels(rom, T)[0];
+    expect(Array.from(readTiles(rom, lv2))).toEqual(Array.from(noisy));
+    rom.undo();
+    expect(Array.from(rom.data)).toEqual(before);
+  });
+});
+
+describe("arena glyphs", () => {
+  it("draws a digit in two colors inside an 8x8 tile", async () => {
+    const { glyphTile, poleTile } = await import("../src/core/arena");
+    const t = glyphTile("A", 6, 2);
+    expect(t).toHaveLength(32);
+    const px = (x: number, y: number) => (x & 1 ? t[y * 4 + (x >> 1)] >> 4 : t[y * 4 + (x >> 1)] & 15);
+    const colors = new Set<number>();
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) colors.add(px(x, y));
+    expect([...colors].sort()).toEqual([2, 6]);
+    expect(px(0, 0)).toBe(2);             // background in the corner
+    expect(() => glyphTile("Z", 1, 0)).toThrow();
+    expect(poleTile(5).some((b) => b !== 0)).toBe(true);
   });
 });

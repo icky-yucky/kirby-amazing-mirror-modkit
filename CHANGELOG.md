@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- Collision test arenas (labeled floor cells, one per collision value) and a tileset save function with relocation.
+- First batch of collision value results documented.
+
 ## 0.4.0
 - Level editor (experimental): browse 286 rooms, paint/fill/pick/erase tiles, automatic LZ77 recompression with relocation into free space.
 - Collision layer: overlay and edit each room's collision map (16x16 blocks), RLE recompression with relocation. Tile edits verified in game; collision values other than 0 and 0D are unmapped.

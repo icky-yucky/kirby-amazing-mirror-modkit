@@ -23,6 +23,7 @@ export interface Level {
   w: number;
   h: number;
   tilesOff: number;      // LZ77 tile data
+  tilesDesc: number;     // descriptor: [ptr to the tile data][ptr to its end][end + 4]
   palPtr: number;        // BG palette rows (raw 15-bit colors)
   palRows: number;
 }
@@ -69,7 +70,7 @@ export function findLevels(rom: Rom, t: LevelTables = USA_TABLES): Level[] {
   return levels.sort((x, y) => x.tag - y.tag);
 }
 
-function sceneAssets(rom: Rom, tag: number, t: LevelTables): Pick<Level, "tilesOff" | "palPtr" | "palRows"> | null {
+function sceneAssets(rom: Rom, tag: number, t: LevelTables): Pick<Level, "tilesOff" | "tilesDesc" | "palPtr" | "palRows"> | null {
   const a = t.scene + tag * 40;
   if (a + 40 > rom.length) return null;
   const id1 = rom.u16(a + 0x14), id2 = rom.u16(a + 0x16);
@@ -83,7 +84,7 @@ function sceneAssets(rom: Rom, tag: number, t: LevelTables): Pick<Level, "tilesO
   if (rom.data[tilesOff] !== 0x10) return null;
   const palPtr = pp & 0xffffff;
   const palRows = Math.max(1, Math.min(16, Math.floor((d2 - palPtr) / 32)));
-  return { tilesOff, palPtr, palRows };
+  return { tilesOff, tilesDesc: d1, palPtr, palRows };
 }
 
 /** Compressed-data padding at the end of the ROM is 0xFF; find a run of it big enough for `need` bytes. */
@@ -182,6 +183,33 @@ export function saveCollision(rom: Rom, level: Level, values: Uint8Array, t: Lev
     const oldPtr = 0x08000000 + cur.off;
     for (let a = 0; a + 4 <= rom.length; a += 4) if (rom.u32(a) === oldPtr) put32(a, 0x08000000 + free);
     put32(cur.desc + 4, 0x08000000 + free + ((enc.length + 3) & ~3));   // end-of-data pointer
+  }
+  for (let i = 0; i < enc.length; i++) writes.push({ off: off + i, val: enc[i] });
+  rom.writeBytes(writes);
+  return { relocated, off, bytes: enc.length, original: cur.used };
+}
+
+/**
+ * Recompresses and writes the room's tileset (8x8 4bpp tiles, 32 bytes each). In place when it fits, otherwise relocated into
+ * free space; the descriptor's end-of-data pointers and every other reference to the old copy are updated.
+ */
+export function saveTileset(rom: Rom, level: Level, tiles: Uint8Array): SaveResult {
+  const cur = lz77Decode(rom.data, level.tilesOff);
+  if (!cur) throw new Error("Could not read the current tileset from the ROM");
+  const enc = lz77Encode(tiles);
+  const writes: Write[] = [];
+  const put32 = (a: number, v: number): void => { for (let k = 0; k < 4; k++) writes.push({ off: a + k, val: (v >> (8 * k)) & 255 }); };
+  let off = level.tilesOff, relocated = false;
+  if (enc.length > cur.used) {
+    const free = findFreeSpace(rom, enc.length + 8);
+    if (free < 0) throw new Error("Not enough free space left in the ROM for this edit");
+    off = free;
+    relocated = true;
+    const oldPtr = 0x08000000 + level.tilesOff;
+    for (let a = 0; a + 4 <= rom.length; a += 4) if (rom.u32(a) === oldPtr) put32(a, 0x08000000 + free);
+    const end = 0x08000000 + free + ((enc.length + 3) & ~3);
+    put32(level.tilesDesc + 4, end);
+    put32(level.tilesDesc + 8, end + 4);
   }
   for (let i = 0; i < enc.length; i++) writes.push({ off: off + i, val: enc[i] });
   rom.writeBytes(writes);

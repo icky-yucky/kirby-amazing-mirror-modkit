@@ -81,3 +81,14 @@ Painting tiles changes only the picture. Collision is its own map, confirmed by 
   from a fresh boot (a save state taken before that point still holds the old copy).
 - **Live editing:** mGBA's Tools, View memory can poke RAM values while the game runs. The collision array is the quickest
   way to try values on a running stage.
+
+## Collision value results so far (emulator test, stage 1 floor)
+Method: write one value into 4 floor blocks of the running stage (rows below stay solid), walk across, release, record Kirby.
+- **Deadly** (Kirby dies): 0x01, 0x02, 0x03, 0x04, 0x09, 0x0A, 0x16 (0x17 probably).
+- **No floor** (he sinks one block and cannot climb out): 0x00, 0x05, 0x07, 0x08, 0x0C. The dip depths differ (7 to 14 pixels),
+  so 5 to 8 and 0x0C are probably slope pieces that only work next to their neighbors.
+- **Walkable with a small bump:** 0x06, 0x0B, 0x15.
+- **Same as 0x0D (solid):** 0x0E, 0x0F (a little slidier), probably more.
+- Not yet tested: 0x14, 0x1A and up. Use `scripts/collision-arena.ts` to build labeled arenas (docs/collision-arena.md).
+- Two pitfalls found while testing: the game preloads the next room's collision while still in the hub (so a RAM match alone
+  does not prove you are in the stage), and PowerShell variable names are case-insensitive.

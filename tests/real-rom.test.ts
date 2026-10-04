@@ -75,3 +75,23 @@ describe.skipIf(!have)("real ROM collision", () => {
     expect(Array.from(readCollision(patched, l2)!.values)).toEqual(Array.from(v));
   });
 });
+
+describe.skipIf(!have)("real ROM arena", () => {
+  const bytes = have ? new Uint8Array(readFileSync(path)) : new Uint8Array(0);
+
+  it("builds a labeled arena and the cells read back at the right spots", async () => {
+    const { buildCollisionArena } = await import("../src/core/arena");
+    const { readCollision } = await import("../src/core/levels");
+    const rom = new Rom(bytes.slice());
+    const level = findLevels(rom).find((x) => x.tag === 101)!;
+    const values = [0x05, 0x06, 0x48, 0xf2, 0x01];
+    const cells = buildCollisionArena(rom, level, values);
+    const patched = new Rom(applyIps(bytes, rom.buildIps()));
+    const l2 = findLevels(patched).find((x) => x.tag === 101)!;
+    const c = readCollision(patched, l2)!;
+    cells.forEach((cell) => expect(c.values[9 * c.w + cell.blockX]).toBe(cell.value));
+    expect(c.values[9 * c.w + 2]).toBe(0x0d);                    // normal floor between cells
+    expect(c.values[8 * c.w + cells[0].blockX]).toBe(0);         // sky above
+    expect(() => buildCollisionArena(new Rom(bytes.slice()), level, new Array(50).fill(5))).toThrow(/fit/);
+  });
+});
