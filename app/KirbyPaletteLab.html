@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kirby Palette Lab</title>
+<style>
+:root{
+  --bg:#17141d; --panel:#211c2b; --panel2:#2a2436; --line:#3a3248; --text:#ece8f4; --dim:#a79fba;
+  --accent:#ff7eb6; --accent2:#7ee0ff; --ok:#8be28b; --warn:#ffcf6e;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,Segoe UI,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0 8px 0 0;color:var(--accent)}
+button,select,input[type=text],input[type=number]{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 9px;font:inherit}
+button{cursor:pointer}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--accent);color:#2a1020;border-color:var(--accent);font-weight:600}
+input[type=text]{width:90px;font-family:ui-monospace,Consolas,monospace}
+input[type=number]{width:64px}
+main{display:grid;grid-template-columns:minmax(380px,1fr) minmax(380px,1fr);gap:14px;padding:14px 16px;max-width:1500px;margin:0 auto}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+section h2{font-size:14px;margin:0 0 8px;color:var(--accent2);letter-spacing:.03em;text-transform:uppercase}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0}
+.dim{color:var(--dim)} .small{font-size:12px}
+label{display:inline-flex;gap:5px;align-items:center}
+.mono{font-family:ui-monospace,Consolas,monospace}
+#drop{display:none;position:fixed;inset:0;background:#000a;z-index:20;align-items:center;justify-content:center;font-size:24px}
+#drop.on{display:flex}
+#welcome{grid-column:1/-1;text-align:center;padding:40px 16px}
+#welcome p{max-width:560px;margin:8px auto;color:var(--dim)}
+/* palette grid */
+.prow{display:flex;align-items:center;gap:6px;margin:2px 0}
+.plabel{width:62px;font:11px ui-monospace,Consolas,monospace;color:var(--dim);cursor:pointer;text-align:right}
+.plabel.active{color:var(--accent);font-weight:700}
+.sw{width:22px;height:22px;border:1px solid #0006;border-radius:3px;cursor:pointer;position:relative}
+.sw.sel{outline:2px solid var(--accent2);outline-offset:1px;z-index:1}
+.sw.mod::after{content:"";position:absolute;right:1px;top:1px;width:6px;height:6px;border-radius:50%;background:var(--warn);border:1px solid #000a}
+.sw.c0{background-image:linear-gradient(45deg,#0003 25%,transparent 25%,transparent 75%,#0003 75%),linear-gradient(45deg,#0003 25%,transparent 25%,transparent 75%,#0003 75%);background-size:8px 8px;background-position:0 0,4px 4px}
+#pals{max-height:520px;overflow:auto;padding:4px 0}
+.slider{display:grid;grid-template-columns:90px 1fr 44px;gap:8px;align-items:center;margin:3px 0}
+.slider input{width:100%}
+canvas#gfx{image-rendering:pixelated;background:#000;border:1px solid var(--line);max-width:100%}
+#finds{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:6px}
+.find{display:flex;gap:8px;align-items:center;padding:3px 8px;border-bottom:1px solid var(--line);cursor:pointer}
+.find:hover{background:var(--panel2)}
+.strip{display:flex}.strip i{width:7px;height:12px;display:block}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--accent);padding:8px 14px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>Kirby Palette Lab</h1>
+  <button id="btnOpen" class="primary">Open ROM…</button>
+  <input id="file" type="file" accept=".gba,.bin,.rom" hidden>
+  <span id="romInfo" class="dim small">No ROM loaded</span>
+  <span style="flex:1"></span>
+  <button id="btnUndo" disabled>Undo</button>
+  <button id="btnReset" disabled>Reset all</button>
+  <button id="btnSaveEdits" disabled>Save edits…</button>
+  <button id="btnLoadEdits" disabled>Load edits…</button>
+  <input id="editsFile" type="file" accept=".json" hidden>
+  <button id="btnIps" disabled>Download IPS patch</button>
+  <button id="btnRom" class="primary" disabled>Download modded ROM</button>
+</header>
+
+<main id="main">
+  <div id="welcome">
+    <h2 style="font-size:20px;color:var(--text);text-transform:none">Recolor sprites in your Kirby &amp; the Amazing Mirror ROM</h2>
+    <p>Open your own ROM file (or drop it on this page). Everything runs locally in your browser and your original file is never changed - you download a modded copy or an IPS patch.</p>
+    <p>Workflow: find a palette → pick a graphics offset to see which sprite uses it → edit the colors and watch the sprite update live.</p>
+  </div>
+
+  <div id="left" hidden>
+    <section>
+      <h2>1 · Palettes</h2>
+      <div class="row">
+        <label>Offset 0x<input id="palOff" type="text" value="0"></label>
+        <label>Rows <input id="palCount" type="number" min="1" max="64" value="16"></label>
+        <button id="palPrev" title="Previous rows">◀</button>
+        <button id="palNext" title="Next rows">▶</button>
+        <button id="btnScanPal">Scan ROM for palettes…</button>
+      </div>
+      <div class="row">
+        <label>Find by color <input id="findCols" type="text" style="width:230px" placeholder="#f8a8c8 #e83850 …"></label>
+        <button id="btnFindCols">Find</button>
+        <span class="dim small">Copy colors from an emulator's palette viewer; finds ROM palettes containing all of them.</span>
+      </div>
+      <div id="finds" hidden></div>
+      <div id="pals"></div>
+      <div class="small dim">Click a swatch to select (Shift = range, Ctrl = add). Click a row label to use that palette in the graphics preview. Yellow dot = changed.</div>
+    </section>
+
+    <section style="margin-top:14px">
+      <h2>2 · Edit colors</h2>
+      <div class="row">
+        <label>Selected color <input id="picker" type="color" value="#ff88aa"></label>
+        <span id="selInfo" class="dim small">nothing selected</span>
+      </div>
+      <div class="row">
+        <label>Apply tools to
+          <select id="scope">
+            <option value="sel">selected colors</option>
+            <option value="row" selected>active palette row</option>
+            <option value="all">all rows shown</option>
+          </select></label>
+        <label><input id="skip0" type="checkbox" checked> keep color 0 (transparent)</label>
+      </div>
+      <div class="slider"><span>Hue</span><input id="sHue" type="range" min="-180" max="180" value="0"><span id="vHue" class="mono">0°</span></div>
+      <div class="slider"><span>Saturation</span><input id="sSat" type="range" min="-100" max="100" value="0"><span id="vSat" class="mono">0</span></div>
+      <div class="slider"><span>Brightness</span><input id="sLit" type="range" min="-100" max="100" value="0"><span id="vLit" class="mono">0</span></div>
+      <div class="row">
+        <button id="btnApplyHSL" class="primary">Apply</button>
+        <label>Swap channels
+          <select id="swap">
+            <option value="">-</option><option value="rbg">R↔G… (R,B,G)</option><option value="grb">(G,R,B)</option>
+            <option value="gbr">(G,B,R)</option><option value="brg">(B,R,G)</option><option value="bgr">(B,G,R)</option>
+          </select></label>
+        <button id="btnSwap">Swap</button>
+        <button id="btnGray">Grayscale</button>
+        <button id="btnInvert">Invert</button>
+      </div>
+      <div class="small dim">Sliders preview live on the graphics; <b>Apply</b> commits to the ROM copy.</div>
+    </section>
+  </div>
+
+  <div id="right" hidden>
+    <section>
+      <h2>3 · Graphics preview</h2>
+      <div class="row">
+        <label>Offset 0x<input id="gOff" type="text" value="0"></label>
+        <label>Data
+          <select id="gComp"><option value="raw">raw 4bpp</option><option value="lz">LZ77 compressed</option></select></label>
+        <label>Tiles/row <input id="gW" type="number" min="1" max="32" value="16"></label>
+        <label>Rows <input id="gH" type="number" min="1" max="64" value="16"></label>
+        <label>Zoom <select id="gZoom"><option>2</option><option selected>3</option><option>4</option></select></label>
+      </div>
+      <div class="row">
+        <button id="gPrevPage">◀ Page</button>
+        <button id="gPrevRow">▲ Row</button>
+        <button id="gNextRow">▼ Row</button>
+        <button id="gNextPage">Page ▶</button>
+        <span id="gInfo" class="dim small mono"></span>
+      </div>
+      <canvas id="gfx" width="128" height="256"></canvas>
+      <div class="row small dim">Palette used: row <b id="gPalRow">0</b> of the palettes on the left. Tip: the same tiles look right only with their own palette - step through rows until the sprite looks correct.</div>
+    </section>
+    <section style="margin-top:14px">
+      <h2>Find compressed graphics</h2>
+      <div class="row">
+        <button id="btnScanLz">Scan ROM for LZ77 tile data…</button>
+        <label>min size <input id="lzMin" type="number" value="512" step="256"> bytes</label>
+        <span id="lzInfo" class="dim small"></span>
+      </div>
+      <div id="lzList" style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:6px" hidden></div>
+    </section>
+  </div>
+</main>
+
+<div id="drop">Drop ROM here</div>
+<div id="toast" class="toast"></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+let rom = null, orig = null, romName = "";
+const undoStack = [];
+let openGesture = null;           // coalesces live edits (color picker drag) into one undo step
+
+// ---------- helpers ----------
+const hex = (n, w = 6) => n.toString(16).toUpperCase().padStart(w, "0");
+const parseHex = s => parseInt(String(s).replace(/^0x/i, ""), 16) || 0;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const rd16 = o => rom[o] | (rom[o + 1] << 8);
+const to5 = v => Math.round(v * 31 / 255);
+const from5 = v => (v << 3) | (v >> 2);
+function colToRgb(v) { return [from5(v & 31), from5((v >> 5) & 31), from5((v >> 10) & 31)]; }
+function rgbToCol(r, g, b) { return clamp(to5(r), 0, 31) | (clamp(to5(g), 0, 31) << 5) | (clamp(to5(b), 0, 31) << 10); }
+function colToCss(v) { const [r, g, b] = colToRgb(v); return `rgb(${r},${g},${b})`; }
+function colToHex(v) { const [r, g, b] = colToRgb(v); return "#" + [r, g, b].map(x => hex(x, 2)).join("").toLowerCase(); }
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 2200); }
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  let h = 0, s = 0;
+  if (mx !== mn) {
+    const d = mx - mn;
+    s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h *= 60;
+  }
+  return [h, s, l];
+}
+function hslToRgb(h, s, l) {
+  h = ((h % 360) + 360) % 360 / 360;
+  if (s === 0) return [l * 255, l * 255, l * 255];
+  const q = l < .5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+  const f = t => { t = (t + 1) % 1; return t < 1 / 6 ? p + (q - p) * 6 * t : t < .5 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+  return [f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255];
+}
+function hslAdjust(col, dh, ds, dl) {
+  const [r, g, b] = colToRgb(col);
+  let [h, s, l] = rgbToHsl(r, g, b);
+  h += dh;
+  s = clamp(ds >= 0 ? s + (1 - s) * ds / 100 : s * (1 + ds / 100), 0, 1);
+  l = clamp(dl >= 0 ? l + (1 - l) * dl / 100 : l * (1 + dl / 100), 0, 1);
+  const o = hslToRgb(h, s, l);
+  return rgbToCol(o[0], o[1], o[2]);
+}
+
+// ---------- ROM / edits ----------
+function setBytes16(changes, coalesce) {
+  // changes: [{off, val}]  (16-bit little endian writes)
+  const entry = [];
+  for (const c of changes) {
+    const old = rd16(c.off);
+    if (old === c.val) continue;
+    entry.push({ off: c.off, old, val: c.val });
+    rom[c.off] = c.val & 255; rom[c.off + 1] = c.val >> 8;
+  }
+  if (!entry.length) return;
+  if (coalesce) {
+    if (!openGesture) { openGesture = new Map(); undoStack.push(openGesture); }
+    for (const e of entry) { const g = openGesture.get(e.off); openGesture.set(e.off, { off: e.off, old: g ? g.old : e.old, val: e.val }); }
+  } else {
+    undoStack.push(new Map(entry.map(e => [e.off, e])));
+  }
+  refreshAll();
+}
+function undo() {
+  openGesture = null;
+  const g = undoStack.pop(); if (!g) return;
+  for (const e of g.values()) { rom[e.off] = e.old & 255; rom[e.off + 1] = e.old >> 8; }
+  refreshAll();
+}
+function changedRuns() {
+  const runs = []; let i = 0;
+  while (i < rom.length) {
+    if (rom[i] !== orig[i]) {
+      let s = i, lastDiff = i;
+      while (i < rom.length && i - lastDiff < 6) { if (rom[i] !== orig[i]) lastDiff = i; i++; }
+      runs.push([s, lastDiff + 1]);
+      i = lastDiff + 1;
+    } else i++;
+  }
+  return runs;
+}
+function countChanged() { let n = 0; for (let i = 0; i < rom.length; i++) if (rom[i] !== orig[i]) n++; return n; }
+
+function download(name, bytes, type = "application/octet-stream") {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([bytes], { type }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+function buildIps() {
+  const parts = [new TextEncoder().encode("PATCH")];
+  for (let [s, e] of changedRuns()) {
+    if (s === 0x454F46) s--;                       // avoid the "EOF" marker value
+    while (e - s > 0) {
+      const len = Math.min(e - s, 0xFFFF);
+      const h = new Uint8Array([s >> 16, (s >> 8) & 255, s & 255, len >> 8, len & 255]);
+      parts.push(h, rom.slice(s, s + len)); s += len;
+    }
+  }
+  parts.push(new TextEncoder().encode("EOF"));
+  return new Blob(parts);
+}
+const baseName = () => romName.replace(/\.[^.]+$/, "");
+
+// ---------- palette view ----------
+const sel = new Set();           // "row,col"
+let activeRow = 0, lastClick = null;
+const palOff = () => parseHex($("#palOff").value) & ~1;
+const palCount = () => clamp(parseInt($("#palCount").value) || 16, 1, 64);
+
+function renderPalettes() {
+  const box = $("#pals"); box.textContent = "";
+  const base = palOff(), n = palCount();
+  for (let r = 0; r < n; r++) {
+    const rowOff = base + r * 32;
+    if (rowOff + 32 > rom.length) break;
+    const row = document.createElement("div"); row.className = "prow";
+    const lab = document.createElement("div");
+    lab.className = "plabel" + (r === activeRow ? " active" : "");
+    lab.textContent = hex(rowOff); lab.title = "Use this row in the graphics preview (double-click: select whole row)";
+    lab.onclick = () => { activeRow = r; renderPalettes(); renderGfx(); };
+    lab.ondblclick = () => { sel.clear(); for (let c = 0; c < 16; c++) sel.add(r + "," + c); activeRow = r; renderPalettes(); updateSelUi(); renderGfx(); };
+    row.appendChild(lab);
+    for (let c = 0; c < 16; c++) {
+      const o = rowOff + c * 2, v = rd16(o), sw = document.createElement("div");
+      sw.className = "sw" + (c === 0 ? " c0" : "") + (sel.has(r + "," + c) ? " sel" : "") + (v !== (orig[o] | (orig[o + 1] << 8)) ? " mod" : "");
+      sw.style.backgroundColor = colToCss(v);
+      sw.title = `${hex(o)}  BGR555 0x${hex(v, 4)}  R${v & 31} G${(v >> 5) & 31} B${(v >> 10) & 31}`;
+      sw.onclick = e => swatchClick(e, r, c);
+      row.appendChild(sw);
+    }
+    box.appendChild(row);
+  }
+}
+function swatchClick(e, r, c) {
+  activeRow = r;
+  if (e.shiftKey && lastClick && lastClick.r === r) {
+    const [a, b] = [Math.min(lastClick.c, c), Math.max(lastClick.c, c)];
+    if (!e.ctrlKey) sel.clear();
+    for (let i = a; i <= b; i++) sel.add(r + "," + i);
+  } else if (e.ctrlKey || e.metaKey) {
+    const k = r + "," + c; sel.has(k) ? sel.delete(k) : sel.add(k);
+  } else { sel.clear(); sel.add(r + "," + c); }
+  lastClick = { r, c };
+  renderPalettes(); updateSelUi(); renderGfx();
+}
+function selOffsets() {
+  const base = palOff();
+  return [...sel].map(k => { const [r, c] = k.split(",").map(Number); return base + r * 32 + c * 2; }).filter(o => o + 2 <= rom.length);
+}
+function updateSelUi() {
+  const offs = selOffsets();
+  $("#selInfo").textContent = offs.length ? `${offs.length} selected` : "nothing selected";
+  if (offs.length) $("#picker").value = colToHex(rd16(offs[0]));
+}
+function scopeOffsets() {
+  const s = $("#scope").value, base = palOff(), n = palCount(), skip0 = $("#skip0").checked, out = [];
+  if (s === "sel") return selOffsets();
+  const rows = s === "row" ? [activeRow] : [...Array(n).keys()];
+  for (const r of rows) for (let c = skip0 ? 1 : 0; c < 16; c++) { const o = base + r * 32 + c * 2; if (o + 2 <= rom.length) out.push(o); }
+  return out;
+}
+
+// ---------- graphics preview ----------
+let gfxCache = { key: "", data: null };
+function lz77(buf, off) {
+  if (buf[off] !== 0x10) return null;
+  const size = buf[off + 1] | (buf[off + 2] << 8) | (buf[off + 3] << 16);
+  if (!size || size > 0x40000) return null;
+  const out = new Uint8Array(size); let ip = off + 4, op = 0;
+  while (op < size) {
+    if (ip >= buf.length) return null;
+    const flags = buf[ip++];
+    for (let b = 7; b >= 0 && op < size; b--) {
+      if (flags & (1 << b)) {
+        if (ip + 1 >= buf.length) return null;
+        const b0 = buf[ip++], b1 = buf[ip++];
+        const len = (b0 >> 4) + 3, disp = (((b0 & 15) << 8) | b1) + 1;
+        if (disp > op) return null;
+        for (let k = 0; k < len && op < size; k++, op++) out[op] = out[op - disp];
+      } else {
+        if (ip >= buf.length) return null;
+        out[op++] = buf[ip++];
+      }
+    }
+  }
+  return { data: out, used: ip - off };
+}
+function gfxSource() {
+  const off = parseHex($("#gOff").value);
+  if ($("#gComp").value === "lz") {
+    const key = "lz" + off;
+    if (gfxCache.key !== key) { const r = lz77(rom, off); gfxCache = { key, data: r ? r.data : null, used: r ? r.used : 0 }; }
+    return gfxCache.data ? { buf: gfxCache.data, base: 0, info: gfxCache.data ? `LZ77 ${gfxCache.data.length} bytes (${gfxCache.used} packed)` : "" } : { buf: null, info: "No valid LZ77 data at this offset" };
+  }
+  return { buf: rom, base: off, info: "raw ROM" };
+}
+let gfxPreview = null;      // {off, val} for live slider preview
+function currentPalette() {
+  const row = palOff() + activeRow * 32;
+  const pal = [];
+  for (let c = 0; c < 16; c++) pal.push(row + c * 2 + 2 <= rom.length ? rd16(row + c * 2) : 0);
+  if (gfxPreview) for (let c = 0; c < 16; c++) { const o = row + c * 2; if (gfxPreview.has(o)) pal[c] = gfxPreview.get(o); }
+  return pal;
+}
+function renderGfx() {
+  if (!rom) return;
+  const W = clamp(parseInt($("#gW").value) || 16, 1, 32), H = clamp(parseInt($("#gH").value) || 16, 1, 64);
+  const zoom = +$("#gZoom").value, cv = $("#gfx");
+  cv.width = W * 8; cv.height = H * 8; cv.style.width = W * 8 * zoom + "px";
+  const ctx = cv.getContext("2d"), img = ctx.createImageData(W * 8, H * 8), px = img.data;
+  const src = gfxSource(); $("#gPalRow").textContent = activeRow;
+  $("#gInfo").textContent = src.info;
+  if (!src.buf) { ctx.clearRect(0, 0, cv.width, cv.height); return; }
+  const pal = currentPalette().map(colToRgb);
+  for (let t = 0; t < W * H; t++) {
+    const to = src.base + t * 32, tx = (t % W) * 8, ty = ((t / W) | 0) * 8;
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      const b = src.buf[to + y * 4 + (x >> 1)] || 0, idx = (x & 1) ? b >> 4 : b & 15;
+      const p = ((ty + y) * W * 8 + tx + x) * 4;
+      if (idx === 0) { const ck = ((x + y + (t & 1)) & 1) ? 38 : 28; px[p] = px[p + 1] = px[p + 2] = ck; }
+      else { const c = pal[idx]; px[p] = c[0]; px[p + 1] = c[1]; px[p + 2] = c[2]; }
+      px[p + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+function gfxStep(tiles) {
+  const comp = $("#gComp").value, cur = parseHex($("#gOff").value);
+  $("#gOff").value = hex(Math.max(0, cur + tiles * 32));
+  renderGfx();
+}
+
+// ---------- palette scanner ----------
+function scanPalettes() {
+  const minRun = 2, found = [];
+  const n = rom.length;
+  let o = 0;
+  const isPal = p => {
+    const set = new Set(); let diff = 0, prev = -1;
+    for (let j = 0; j < 16; j++) {
+      const v = rom[p + j * 2] | (rom[p + j * 2 + 1] << 8);
+      if (v & 0x8000) return false;
+      set.add(v);
+      if (prev >= 0) { diff += Math.abs((v & 31) - (prev & 31)) + Math.abs(((v >> 5) & 31) - ((prev >> 5) & 31)) + Math.abs(((v >> 10) & 31) - ((prev >> 10) & 31)); }
+      prev = v;
+    }
+    return set.size >= 6 && diff / 15 < 30;          // reject noisy data (graphics/code)
+  };
+  while (o + 32 <= n) {
+    if (isPal(o)) { const s = o; let k = 0; while (o + 32 <= n && isPal(o)) { o += 32; k++; } if (k >= minRun) found.push({ off: s, count: k }); }
+    else o += 2;
+  }
+  return found;
+}
+function showFinds(list) {
+  const box = $("#finds"); box.hidden = false; box.textContent = "";
+  if (!list.length) { box.textContent = "Nothing found."; return; }
+  const head = document.createElement("div"); head.className = "small dim"; head.style.padding = "4px 8px";
+  head.textContent = `${list.length} candidate blocks (click to open). Smooth multi-row blocks are most likely real palettes.`;
+  box.appendChild(head);
+  for (const f of list.slice(0, 600)) {
+    const d = document.createElement("div"); d.className = "find";
+    const strip = document.createElement("span"); strip.className = "strip";
+    for (let c = 0; c < 16; c++) { const i = document.createElement("i"); i.style.background = colToCss(rd16(f.off + c * 2)); strip.appendChild(i); }
+    d.innerHTML = `<span class="mono">0x${hex(f.off)}</span>`; d.appendChild(strip);
+    const cnt = document.createElement("span"); cnt.className = "dim small"; cnt.textContent = `${f.count} rows`; d.appendChild(cnt);
+    d.onclick = () => { $("#palOff").value = hex(f.off); $("#palCount").value = Math.min(f.count, 32); activeRow = 0; sel.clear(); refreshAll(); };
+    box.appendChild(d);
+  }
+}
+
+function findByColors(text) {
+  const want = [...new Set((text.match(/#?[0-9a-f]{6}\b/gi) || []).map(h => { h = h.replace("#", ""); return rgbToCol(parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)); }))];
+  if (!want.length) { toast("Enter one or more colors like #f8a8c8"); return null; }
+  const out = [], seen = new Set();
+  for (let p = 0; p + 2 <= rom.length; p += 2) {
+    if (rd16(p) !== want[0]) continue;
+    for (let s = Math.max(0, p - 30); s <= p; s += 2) {
+      if (seen.has(s) || s + 32 > rom.length) continue;
+      const win = new Set(); for (let j = 0; j < 16; j++) win.add(rd16(s + j * 2));
+      if (want.every(c => win.has(c))) { seen.add(s); out.push({ off: s, count: 1 }); }
+    }
+  }
+  return out;
+}
+
+// ---------- LZ77 graphics scanner ----------
+function scanLz() {
+  const minSize = parseInt($("#lzMin").value) || 512, list = $("#lzList"), info = $("#lzInfo");
+  list.hidden = false; list.textContent = "";
+  let o = 0; const n = rom.length, results = [];
+  const btn = $("#btnScanLz"); btn.disabled = true;
+  (function chunk() {
+    const end = Math.min(o + 0x40000, n);
+    for (; o < end; o += 4) {
+      if (rom[o] !== 0x10) continue;
+      const size = rom[o + 1] | (rom[o + 2] << 8) | (rom[o + 3] << 16);
+      if (size < minSize || size > 0x8000 || size % 32) continue;
+      const r = lz77(rom, o);
+      if (r) results.push({ off: o, size, used: r.used });
+    }
+    info.textContent = `scanning… ${(o / n * 100) | 0}%  (${results.length} found)`;
+    if (o < n) return setTimeout(chunk, 0);
+    btn.disabled = false; info.textContent = `${results.length} blocks`;
+    for (const r of results) {
+      const d = document.createElement("div"); d.className = "find";
+      d.innerHTML = `<span class="mono">0x${hex(r.off)}</span><span class="dim small">${r.size} bytes (${r.size / 32} tiles)</span>`;
+      d.onclick = () => { $("#gOff").value = hex(r.off); $("#gComp").value = "lz"; $("#gH").value = Math.min(64, Math.ceil(r.size / 32 / (+$("#gW").value || 16))); renderGfx(); };
+      list.appendChild(d);
+    }
+  })();
+}
+
+// ---------- tools ----------
+function applyToScope(fn) {
+  const offs = scopeOffsets();
+  if (!offs.length) return toast("Nothing to apply to - select colors or choose another scope");
+  setBytes16(offs.map(o => ({ off: o, val: fn(rd16(o)) })), false);
+}
+function livePreviewHSL() {
+  const dh = +$("#sHue").value, ds = +$("#sSat").value, dl = +$("#sLit").value;
+  $("#vHue").textContent = dh + "°"; $("#vSat").textContent = ds; $("#vLit").textContent = dl;
+  gfxPreview = null;
+  if (dh || ds || dl) {
+    const m = new Map();
+    for (const o of scopeOffsets()) m.set(o, hslAdjust(rd16(o), dh, ds, dl));
+    gfxPreview = m;
+  }
+  renderGfx();
+}
+function resetSliders() { $("#sHue").value = $("#sSat").value = $("#sLit").value = 0; gfxPreview = null; $("#vHue").textContent = "0°"; $("#vSat").textContent = "0"; $("#vLit").textContent = "0"; }
+
+// ---------- wiring ----------
+function refreshAll() {
+  renderPalettes(); renderGfx(); updateSelUi();
+  $("#btnUndo").disabled = !undoStack.length;
+  const changed = countChanged() > 0;
+  for (const id of ["#btnReset", "#btnSaveEdits", "#btnIps", "#btnRom"]) $(id).disabled = !changed;
+}
+function loadRom(buf, name) {
+  const bytes = new Uint8Array(buf);
+  if (bytes.length < 0x200 || bytes.length > 0x2000000) return toast("That doesn't look like a GBA ROM");
+  orig = bytes; rom = bytes.slice(); romName = name; undoStack.length = 0; sel.clear(); activeRow = 0; gfxCache = { key: "" };
+  const title = new TextDecoder().decode(bytes.slice(0xA0, 0xAC)).replace(/\0/g, ""), code = new TextDecoder().decode(bytes.slice(0xAC, 0xB0));
+  $("#romInfo").textContent = `${name} · ${(bytes.length / 1048576).toFixed(0)} MB · ${title} [${code}]`;
+  if (!/^AMB/.test(code)) toast(`Header says ${code}, not Amazing Mirror (AMB…) - tools still work, offsets may differ`);
+  $("#welcome").hidden = true; $("#left").hidden = false; $("#right").hidden = false;
+  $("#btnLoadEdits").disabled = false;
+  $("#finds").hidden = true; $("#lzList").hidden = true;
+  refreshAll();
+}
+async function openFile(f) { if (f) loadRom(await f.arrayBuffer(), f.name); }
+
+$("#btnOpen").onclick = () => $("#file").click();
+$("#file").onchange = e => openFile(e.target.files[0]);
+let dragDepth = 0;
+addEventListener("dragenter", e => { e.preventDefault(); dragDepth++; $("#drop").classList.add("on"); });
+addEventListener("dragleave", e => { if (--dragDepth <= 0) { dragDepth = 0; $("#drop").classList.remove("on"); } });
+addEventListener("dragover", e => e.preventDefault());
+addEventListener("drop", e => { e.preventDefault(); dragDepth = 0; $("#drop").classList.remove("on"); openFile(e.dataTransfer.files[0]); });
+
+for (const id of ["#palOff", "#palCount"]) $(id).onchange = () => { activeRow = 0; sel.clear(); refreshAll(); };
+$("#palPrev").onclick = () => { $("#palOff").value = hex(Math.max(0, palOff() - palCount() * 32)); $("#palOff").onchange(); };
+$("#palNext").onclick = () => { $("#palOff").value = hex(palOff() + palCount() * 32); $("#palOff").onchange(); };
+$("#btnScanPal").onclick = () => { const b = $("#btnScanPal"); b.disabled = true; b.textContent = "Scanning…"; setTimeout(() => { showFinds(scanPalettes()); b.disabled = false; b.textContent = "Scan ROM for palettes…"; }, 20); };
+
+$("#btnFindCols").onclick = () => { const r = findByColors($("#findCols").value); if (r) showFinds(r); };
+for (const id of ["#gOff", "#gComp", "#gW", "#gH", "#gZoom"]) $(id).onchange = () => renderGfx();
+$("#gPrevPage").onclick = () => gfxStep(-(+$("#gW").value) * (+$("#gH").value));
+$("#gNextPage").onclick = () => gfxStep((+$("#gW").value) * (+$("#gH").value));
+$("#gPrevRow").onclick = () => gfxStep(-(+$("#gW").value));
+$("#gNextRow").onclick = () => gfxStep(+$("#gW").value);
+$("#btnScanLz").onclick = scanLz;
+
+$("#picker").oninput = e => {
+  const offs = selOffsets(); if (!offs.length) return;
+  const h = e.target.value, v = rgbToCol(parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16));
+  setBytes16(offs.map(o => ({ off: o, val: v })), true);
+};
+$("#picker").onchange = () => { openGesture = null; };
+for (const id of ["#sHue", "#sSat", "#sLit", "#scope", "#skip0"]) $(id).oninput = livePreviewHSL;
+$("#btnApplyHSL").onclick = () => {
+  const dh = +$("#sHue").value, ds = +$("#sSat").value, dl = +$("#sLit").value;
+  if (!dh && !ds && !dl) return toast("Move a slider first");
+  resetSliders(); applyToScope(c => hslAdjust(c, dh, ds, dl));
+};
+const swaps = { rbg: ([r, g, b]) => [r, b, g], grb: ([r, g, b]) => [g, r, b], gbr: ([r, g, b]) => [g, b, r], brg: ([r, g, b]) => [b, r, g], bgr: ([r, g, b]) => [b, g, r] };
+$("#btnSwap").onclick = () => { const f = swaps[$("#swap").value]; if (!f) return toast("Pick a channel order"); resetSliders(); applyToScope(c => { const o = f([c & 31, (c >> 5) & 31, (c >> 10) & 31]); return o[0] | (o[1] << 5) | (o[2] << 10); }); };
+$("#btnGray").onclick = () => { resetSliders(); applyToScope(c => { const r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31, y = Math.round(r * .3 + g * .59 + b * .11); return y | (y << 5) | (y << 10); }); };
+$("#btnInvert").onclick = () => { resetSliders(); applyToScope(c => (~c) & 0x7FFF); };
+
+$("#btnUndo").onclick = undo;
+$("#btnReset").onclick = () => { if (!confirm("Discard all edits and restore the original ROM data?")) return; rom.set(orig); undoStack.length = 0; refreshAll(); };
+$("#btnRom").onclick = () => download(`${baseName()} (palette mod).gba`, rom);
+$("#btnIps").onclick = () => download(`${baseName()} (palette mod).ips`, buildIps());
+$("#btnSaveEdits").onclick = () => {
+  const edits = changedRuns().map(([s, e]) => ({ offset: s, hex: [...rom.slice(s, e)].map(b => hex(b, 2)).join("") }));
+  download(`${baseName()} edits.json`, JSON.stringify({ tool: "KirbyPaletteLab", rom: romName, edits }, null, 1), "application/json");
+};
+$("#btnLoadEdits").onclick = () => $("#editsFile").click();
+$("#editsFile").onchange = async e => {
+  try {
+    const j = JSON.parse(await e.target.files[0].text()); let n = 0;
+    for (const ed of j.edits) for (let i = 0; i < ed.hex.length; i += 2) { const o = ed.offset + i / 2; if (o < rom.length) { rom[o] = parseInt(ed.hex.substr(i, 2), 16); n++; } }
+    undoStack.length = 0; refreshAll(); toast(`Applied ${n} bytes of edits`);
+  } catch (err) { toast("Couldn't read that edits file"); }
+  e.target.value = "";
+};
+addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key === "z" && rom && !/INPUT|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); undo(); } });
+
+window.KPL = { loadRom };   // for automated testing
+</script>
+</body>
+</html>

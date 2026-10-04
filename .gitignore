@@ -1,0 +1,17 @@
+# Game data is never committed - bring your own legally obtained ROM
+*.gba
+*.zip
+*.sav
+*.ss?
+Kirby & the Amazing Mirror/
+# Downloaded tools (run tools/setup.ps1 to fetch them)
+tools/mGBA-*/
+tools/radare2/
+# Scratch output
+tools/dbg/*.png
+tools/dbg/*.txt
+out/
+*.ips
+tools/node-*/
+node_modules/
+dist/
