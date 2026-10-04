@@ -15,3 +15,5 @@ out/
 tools/node-*/
 node_modules/
 dist/
+tools/dbg/dump/
+tools/states/

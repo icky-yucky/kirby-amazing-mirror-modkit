@@ -12,7 +12,7 @@ public class G {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L,T,R,B; }
   public static void Tap(byte vk, int ms){ keybd_event(vk,0,0,0); Thread.Sleep(ms); keybd_event(vk,0,2,0); Thread.Sleep(60); }
   public static int[] Rect(IntPtr h){ RECT r; GetWindowRect(h,out r); return new int[]{r.L,r.T,r.R-r.L,r.B-r.T}; }
-  public void Connect(int port){ c=new TcpClient("127.0.0.1",port); s=c.GetStream(); s.ReadTimeout=20000; }
+  public void Connect(int port){ c=new TcpClient("127.0.0.1",port); s=c.GetStream(); s.ReadTimeout=4000; }
   static string Cs(string d){ int x=0; foreach(char ch in d) x+=ch; return (x&255).ToString("x2"); }
   public void Send(string d){ byte[] b=Encoding.ASCII.GetBytes("$"+d+"#"+Cs(d)); s.Write(b,0,b.Length); }
   public void Raw(byte b){ s.WriteByte(b); }
