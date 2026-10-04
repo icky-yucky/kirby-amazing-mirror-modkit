@@ -49,3 +49,29 @@ describe.skipIf(!have)("real ROM", () => {
     expect(Array.from(readMap(patched, l2)!.entries)).toEqual(Array.from(edited));
   });
 });
+
+describe.skipIf(!have)("real ROM collision", () => {
+  const bytes = have ? new Uint8Array(readFileSync(path)) : new Uint8Array(0);
+
+  it("every room's collision map decodes to (w/2) x (h/2) blocks", async () => {
+    const { readCollision } = await import("../src/core/levels");
+    const rom = new Rom(bytes.slice());
+    const levels = findLevels(rom);
+    const missing = levels.filter((l) => !readCollision(rom, l)).map((l) => l.tag);
+    console.log(`rooms without collision data: ${missing.join(", ") || "none"}`);
+    expect(missing.length).toBeLessThanOrEqual(2);
+  });
+
+  it("an edited collision map survives save, IPS export and reload", async () => {
+    const { readCollision, saveCollision } = await import("../src/core/levels");
+    const rom = new Rom(bytes.slice());
+    const l = findLevels(rom).find((x) => x.tag === 101)!;
+    const c = readCollision(rom, l)!;
+    const v = c.values.slice();
+    for (let x = 6; x < 14; x++) v[6 * c.w + x] = 0x0d;       // a solid ledge above the start of the forest stage
+    saveCollision(rom, l, v);
+    const patched = new Rom(applyIps(bytes, rom.buildIps()));
+    const l2 = findLevels(patched).find((x) => x.tag === 101)!;
+    expect(Array.from(readCollision(patched, l2)!.values)).toEqual(Array.from(v));
+  });
+});

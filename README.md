@@ -23,6 +23,9 @@ Grab `KirbySpriteStudio.html` (and optionally `KirbyPaletteLab.html`) from the
 ## Level editor (experimental)
 The **Levels** tab lists 286 rooms across 9 areas. Pick a room, then paint, fill, pick or erase tiles on its main tile layer, with flips and palette rows. Edits save into the ROM copy on every stroke (undoable). Maps are recompressed automatically; the ~80% that fit their original slot are written in place, the rest are moved into free space at the end of the ROM and their pointer is updated. Collision and enemy placement are not editable yet, and the in-game effect of an edited room is still being verified, so treat it as experimental.
 
+## Collision
+Switch the layer to **Collision** to see and edit what is solid, one value per 16x16-pixel block. Tiles and collision are separate: painting a platform needs both. Values 0 (empty) and 0D (solid ground) are verified; the rest are still being mapped.
+
 ## Palette Lab
 Raw palette and tile viewer for exploring arbitrary ROM data (palette scanner, LZ77 tile scanner, find-by-color).
 

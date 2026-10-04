@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { findLevels, findFreeSpace, readMap, saveMap, tileEntry } from "../src/core/levels";
+import { findLevels, findFreeSpace, readCollision, readMap, saveCollision, saveMap, tileEntry } from "../src/core/levels";
+import { rleDecode, rleEncode } from "../src/core/rle";
 import { lz77Decode, lz77Encode } from "../src/core/lz77";
 import { Rom } from "../src/core/rom";
 
@@ -51,10 +52,10 @@ describe("lz77", () => {
 });
 
 // ---- a tiny ROM with one level (scene tag 2) laid out like the real game ----
-const T = { scene: 0x1000, tileAssets: 0x2000, palAssets: 0x2100 };
+const T = { scene: 0x1000, tileAssets: 0x2000, palAssets: 0x2100, collIndexBase: 3 };
 const MAP = 0x7000, TILES = 0x4000, PAL = 0x5000, FREE = 0x10000;
 
-function buildLevelRom(w = 6, h = 4): { rom: Rom; entries: Uint16Array } {
+function buildLevelRom(w = 6, h = 4): { rom: Rom; entries: Uint16Array; coll: Uint8Array } {
   const buf = new Uint8Array(0x30000);
   const dv = new DataView(buf.buffer);
   const w32 = (o: number, v: number) => dv.setUint32(o, v >>> 0, true);
@@ -75,11 +76,18 @@ function buildLevelRom(w = 6, h = 4): { rom: Rom; entries: Uint16Array } {
   w32(0x6004, w | (h << 16));
   w32(0x6000 + 28, ptr(MAP));
   w32(0x6000 + 32, 2 << 16);
+  // collision asset: palette-table entry (collIndexBase + id 0) -> [ptr to RLE data][ptr to its end]
+  const coll = Uint8Array.from({ length: (w >> 1) * (h >> 1) }, (_, i) => (i % 3 === 0 ? 0x0d : 0));
+  const ce = rleEncode(coll);
+  w32(T.palAssets + 3 * 4, ptr(0x8000));
+  w32(0x8000, ptr(0x8100));
+  w32(0x8004, ptr(0x8100 + ((ce.length + 3) & ~3)));
+  buf.set(ce, 0x8100);
   const entries = Uint16Array.from({ length: w * h }, (_, i) => tileEntry(i % 2, false, false, 0));
   const raw = new Uint8Array(entries.length * 2);
   entries.forEach((e, i) => { raw[i * 2] = e & 255; raw[i * 2 + 1] = e >> 8; });
   buf.set(lz77Encode(raw), MAP);
-  return { rom: new Rom(buf, "level.gba"), entries };
+  return { rom: new Rom(buf, "level.gba"), entries, coll };
 }
 
 describe("levels", () => {
@@ -130,5 +138,64 @@ describe("levels", () => {
   it("builds tile entries", () => {
     expect(tileEntry(5, true, false, 3)).toBe(5 | 0x400 | 0x3000);
     expect(tileEntry(1023, false, true, 15)).toBe(1023 | 0x800 | 0xf000);
+  });
+});
+
+describe("rle", () => {
+  it("round-trips runs, literals and long runs", () => {
+    const r = rnd(11);
+    for (const src of [
+      new Uint8Array(500).fill(13),
+      Uint8Array.from({ length: 300 }, () => Math.floor(r() * 4)),
+      Uint8Array.from({ length: 1000 }, (_, i) => (i % 200 < 150 ? 0 : i & 255)),
+      Uint8Array.from([5]), Uint8Array.from([5, 5]), Uint8Array.from([5, 5, 5]),
+    ]) {
+      const enc = rleEncode(src);
+      const dec = rleDecode(enc, 0)!;
+      expect(Array.from(dec.data)).toEqual(Array.from(src));
+      expect(dec.used).toBe(enc.length);
+    }
+  });
+  it("compresses runs", () => {
+    expect(rleEncode(new Uint8Array(1000).fill(0)).length).toBeLessThan(40);
+  });
+  it("rejects the wrong header", () => {
+    expect(rleDecode(Uint8Array.from([0x10, 4, 0, 0, 1, 2, 3, 4]), 0)).toBeNull();
+  });
+});
+
+describe("collision", () => {
+  it("reads a room's collision map through the scene entry", () => {
+    const { rom, coll } = buildLevelRom(40, 20);
+    const lv = findLevels(rom, T)[0];
+    const c = readCollision(rom, lv, T)!;
+    expect(c).toMatchObject({ w: 20, h: 10 });
+    expect(Array.from(c.values)).toEqual(Array.from(coll));
+  });
+  it("saves collision in place when it fits", () => {
+    const { rom, coll } = buildLevelRom(40, 20);
+    const lv = findLevels(rom, T)[0];
+    const v = coll.slice();
+    v.fill(0x0d);
+    const r = saveCollision(rom, lv, v, T);
+    expect(r.relocated).toBe(false);
+    expect(Array.from(readCollision(rom, lv, T)!.values)).toEqual(Array.from(v));
+  });
+  it("relocates collision that grew and fixes both descriptor pointers; undo restores", () => {
+    const { rom } = buildLevelRom(40, 20);
+    const lv = findLevels(rom, T)[0];
+    saveCollision(rom, lv, new Uint8Array(200), T);          // shrink first so the next, noisy save has to move
+    rom.clearUndo();
+    const before = Array.from(rom.data);
+    const r0 = rnd(21);
+    const noisy = Uint8Array.from({ length: 200 }, () => Math.floor(r0() * 200) + 1);
+    const r = saveCollision(rom, lv, noisy, T);
+    expect(r.relocated).toBe(true);
+    const c = readCollision(rom, lv, T)!;
+    expect(c.off).toBe(r.off);
+    expect(Array.from(c.values)).toEqual(Array.from(noisy));
+    expect(rom.u32(c.desc + 4)).toBeGreaterThan(rom.u32(c.desc));
+    rom.undo();
+    expect(Array.from(rom.data)).toEqual(before);
   });
 });

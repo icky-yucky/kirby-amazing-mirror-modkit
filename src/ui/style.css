@@ -68,3 +68,6 @@ label{display:inline-flex;gap:5px;align-items:center}
 #lvPickerWrap{position:relative;overflow:auto;max-height:260px;background:#555a6e;border:1px solid var(--line);border-radius:6px;line-height:0}
 #lvPicker{image-rendering:pixelated;cursor:pointer;display:block}
 #lvPickSel{position:absolute;border:2px solid var(--accent);pointer-events:none;box-sizing:border-box}
+#lvColl{position:absolute;left:0;top:0;image-rendering:pixelated;pointer-events:none;display:none}
+#lvCollPresets button{padding:3px 7px;font:11px ui-monospace,Consolas,monospace}
+#lvCollPresets button.on{border-color:var(--accent2);color:var(--accent2)}

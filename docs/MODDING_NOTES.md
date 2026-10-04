@@ -64,3 +64,20 @@ which assets other scenes use (only 14 scenes match the tile-descriptor pattern 
 - Open question: after entering a stage the game made no further BIOS decompress calls for the map, and a save state taken in
   the hub still showed the original map when run with an edited ROM. The leading explanation is that the next room's map is
   decompressed while the player is still in the hub (state RAM already held it), so edited maps must be tested from a fresh boot.
+
+## Collision (verified: tiles are separate from collision)
+Painting tiles changes only the picture. Collision is its own map, confirmed by walking through added tiles in game.
+- **Format:** one byte per 16x16-pixel block, so a room of w x h tiles has (w/2) x (h/2) bytes, row-major, BIOS RLE (type 0x30)
+  compressed. In RAM it sits uncompressed in EWRAM (room 101: about 0x02024ED0, 86 x 13 bytes).
+- **Where:** the asset table at 0xD63288 holds palettes (entries 0 to 41) followed by one collision asset per room
+  (entries 42 to 328). Each entry points at a two-word descriptor `[ptr to RLE data][ptr to end of that data]`.
+- **Which room:** the scene entry's u16 at +0x18 is the collision id; the table index is `42 + id`. This rule matches the
+  expected size for 286 of 287 rooms.
+- **Values seen (80 distinct):** 0 empty, 0x0D solid ground (by far the most common), 5 to 8 slopes (the 5,6,D,7,8 shape),
+  and many more (1-4, 9-0x0C, 0x0E, 0x0F, 0x14-0x2F, 0x48-0x4F, 0x50-0x5E, 0x60-0x70, 0xF0-0xFF). Only 0 and 0x0D are
+  confirmed in game; the rest still need behavior tests (ice, water, spikes, doors and so on are likely in there).
+- **Room 101 map RAM copy:** the decompressed tile map is also in EWRAM (0x02028EE0 in one capture).
+- **Timing:** the next room's map and collision are loaded while the player is still in the hub, so edited data must be tested
+  from a fresh boot (a save state taken before that point still holds the old copy).
+- **Live editing:** mGBA's Tools, View memory can poke RAM values while the game runs. The collision array is the quickest
+  way to try values on a running stage.

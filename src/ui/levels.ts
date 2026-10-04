@@ -1,4 +1,6 @@
-import { Level, findLevels, levelName, readMap, readTiles, saveMap, tileEntry } from "../core/levels";
+import {
+  CollisionInfo, Level, findLevels, levelName, readCollision, readMap, readTiles, saveCollision, saveMap, tileEntry,
+} from "../core/levels";
 import { Rom } from "../core/rom";
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string): T => document.querySelector(s) as T;
@@ -6,24 +8,41 @@ const input = (s: string): HTMLInputElement => $<HTMLInputElement>(s);
 const select = (s: string): HTMLSelectElement => $<HTMLSelectElement>(s);
 
 type Tool = "paint" | "fill" | "pick" | "erase";
+type Layer = "tiles" | "coll";
 
-/** Tile-layer editor for the game's rooms. Edits are written to the ROM on every stroke. */
+/** Values the game uses a lot, shown as quick buttons. Only 0 and 0x0D are verified in game. */
+const COLL_NAMES: Record<number, string> = { 0: "empty", 0x0d: "solid ground", 5: "slope", 6: "slope", 7: "slope", 8: "slope" };
+const COLL_PRESETS = [0x00, 0x0d, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0f, 0x48, 0x50, 0xf0, 0xf2, 0x55, 0x56, 0x64];
+
+function collColor(v: number): string {
+  if (v === 0) return "";
+  if (v === 0x0d) return "rgba(255,60,60,0.45)";
+  const hue = (v * 47) % 360;
+  return `hsla(${hue},85%,55%,0.5)`;
+}
+
+/** Tile and collision editor for the game's rooms. Edits are written to the ROM on every stroke. */
 export class LevelEditor {
   private rom: Rom | null = null;
   private levels: Level[] = [];
   private cur: Level | null = null;
   private entries: Uint16Array = new Uint16Array(0);
+  private coll: CollisionInfo | null = null;
+  private collValues: Uint8Array = new Uint8Array(0);
   private tiles: Uint8Array = new Uint8Array(0);
   private pal: number[][][] = [];            // [row][index] -> [r, g, b]
   private cache = new Map<number, ImageData>();
   private tool: Tool = "paint";
+  private layer: Layer = "tiles";
   private selTile = 1;
+  private collVal = 0x0d;
   private painting = false;
   private dirty = false;
   private fillStart: { x: number; y: number } | null = null;
 
   constructor(private onChange: () => void, private toast: (m: string) => void) {
     this.wire();
+    this.buildPresets();
   }
 
   /** Called when a ROM is loaded. */
@@ -71,6 +90,8 @@ export class LevelEditor {
     const m = readMap(rom, l);
     if (!m) { $("#lvInfo").textContent = "Could not read this map."; return; }
     this.entries = m.entries;
+    this.coll = readCollision(rom, l);
+    this.collValues = this.coll ? this.coll.values.slice() : new Uint8Array(0);
     this.tiles = readTiles(rom, l);
     this.pal = [];
     for (let r = 0; r < 16; r++) {
@@ -82,15 +103,19 @@ export class LevelEditor {
       this.pal.push(row);
     }
     this.cache.clear();
-    const cv = $<HTMLCanvasElement>("#lvMap");
-    if (cv.width !== l.w * 8 || cv.height !== l.h * 8) { cv.width = l.w * 8; cv.height = l.h * 8; }
+    for (const id of ["#lvMap", "#lvColl"]) {
+      const cv = $<HTMLCanvasElement>(id);
+      if (cv.width !== l.w * 8 || cv.height !== l.h * 8) { cv.width = l.w * 8; cv.height = l.h * 8; }
+    }
     this.drawAll();
+    this.drawColl();
     this.drawPicker();
     this.applyZoom();
     $("#lvTitle").textContent = `${levelName(l)} / scene ${l.tag}`;
     $("#lvInfo").textContent =
       `${l.w} x ${l.h} tiles. Tileset ${(this.tiles.length / 32) | 0} tiles at ROM 0x${l.tilesOff.toString(16).toUpperCase()}, ` +
-      `${l.palRows} palette rows at 0x${l.palPtr.toString(16).toUpperCase()}. Map stored at 0x${m.off.toString(16).toUpperCase()} (${m.used} bytes).`;
+      `${l.palRows} palette rows at 0x${l.palPtr.toString(16).toUpperCase()}. Map at 0x${m.off.toString(16).toUpperCase()} (${m.used} bytes)` +
+      (this.coll ? `; collision ${this.coll.w} x ${this.coll.h} blocks at 0x${this.coll.off.toString(16).toUpperCase()} (${this.coll.used} bytes).` : "; this room has no collision data.");
     if (resetView) $("#lvScroll").scrollTo(0, 0);
   }
 
@@ -122,6 +147,32 @@ export class LevelEditor {
     for (let y = 0; y < l.h; y++) for (let x = 0; x < l.w; x++) this.drawTile(x, y);
   }
 
+  private collVisible(): boolean {
+    return !!this.coll && (this.layer === "coll" || input("#lvShowColl").checked);
+  }
+
+  private drawCollCell(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+    const v = this.collValues[y * this.coll!.w + x];
+    ctx.clearRect(x * 16, y * 16, 16, 16);
+    const col = collColor(v);
+    if (!col) return;
+    ctx.fillStyle = col;
+    ctx.fillRect(x * 16, y * 16, 16, 16);
+    if (v !== 0x0d && Number(select("#lvZoom").value) >= 3) {
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 8px monospace";
+      ctx.fillText(v.toString(16), x * 16 + 2, y * 16 + 10);
+    }
+  }
+
+  private drawColl(): void {
+    const cv = $<HTMLCanvasElement>("#lvColl"), ctx = cv.getContext("2d")!;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    cv.style.display = this.collVisible() ? "block" : "none";
+    if (!this.coll) return;
+    for (let y = 0; y < this.coll.h; y++) for (let x = 0; x < this.coll.w; x++) this.drawCollCell(ctx, x, y);
+  }
+
   private drawPicker(): void {
     const n = Math.max(1, (this.tiles.length / 32) | 0), cols = 32, rows = Math.ceil(n / cols);
     const cv = $<HTMLCanvasElement>("#lvPicker");
@@ -150,31 +201,79 @@ export class LevelEditor {
     const l = this.cur;
     if (!l) return;
     const z = Number(select("#lvZoom").value);
-    const cv = $<HTMLCanvasElement>("#lvMap");
-    cv.style.width = l.w * 8 * z + "px";
-    cv.style.height = l.h * 8 * z + "px";
-    const stage = $("#lvStage");
-    stage.style.setProperty("--cell", 8 * z + "px");
+    for (const id of ["#lvMap", "#lvColl"]) {
+      const cv = $<HTMLCanvasElement>(id);
+      cv.style.width = l.w * 8 * z + "px";
+      cv.style.height = l.h * 8 * z + "px";
+    }
+    const stage = $("#lvStage"), cell = (this.layer === "coll" ? 16 : 8) * z;
+    stage.style.setProperty("--cell", cell + "px");
     stage.classList.toggle("grid", input("#lvGrid").checked);
+    this.drawColl();
+  }
+
+  // ---- layer and presets ----
+  private setLayer(layer: Layer): void {
+    this.layer = layer;
+    $("#lvLayerTiles").classList.toggle("on", layer === "tiles");
+    $("#lvLayerColl").classList.toggle("on", layer === "coll");
+    $("#lvCollPanel").hidden = layer !== "coll";
+    $("#lvPickerWrap").parentElement!.style.display = "";
+    $("#lvPickerWrap").style.display = layer === "tiles" ? "" : "none";
+    if (layer === "coll") input("#lvShowColl").checked = true;
+    this.applyZoom();
+  }
+
+  private buildPresets(): void {
+    const box = $("#lvCollPresets");
+    box.textContent = "";
+    for (const v of COLL_PRESETS) {
+      const b = document.createElement("button");
+      b.textContent = v.toString(16).padStart(2, "0");
+      b.title = COLL_NAMES[v] ?? "unverified";
+      b.dataset.v = String(v);
+      b.onclick = () => this.setCollVal(v);
+      box.appendChild(b);
+    }
+    this.setCollVal(this.collVal);
+  }
+
+  private setCollVal(v: number): void {
+    this.collVal = v & 255;
+    input("#lvCollVal").value = this.collVal.toString(16).padStart(2, "0");
+    $("#lvCollName").textContent = COLL_NAMES[this.collVal] ?? "not yet understood";
+    document.querySelectorAll<HTMLElement>("#lvCollPresets button").forEach((b) => b.classList.toggle("on", Number(b.dataset.v) === this.collVal));
   }
 
   // ---- editing ----
+  /** Size of one editable cell in tiles: 1 for tiles, 2 for collision blocks. */
+  private get span(): number { return this.layer === "coll" ? 2 : 1; }
+  private get cw(): number { return this.cur ? this.cur.w / this.span : 0; }
+  private get ch(): number { return this.cur ? this.cur.h / this.span : 0; }
+
   private cell(e: PointerEvent): { x: number; y: number } | null {
-    const l = this.cur;
-    if (!l) return null;
+    if (!this.cur || (this.layer === "coll" && !this.coll)) return null;
     const rc = $<HTMLCanvasElement>("#lvMap").getBoundingClientRect();
-    const x = Math.floor(((e.clientX - rc.left) / rc.width) * l.w), y = Math.floor(((e.clientY - rc.top) / rc.height) * l.h);
-    return x < 0 || y < 0 || x >= l.w || y >= l.h ? null : { x, y };
+    const x = Math.floor(((e.clientX - rc.left) / rc.width) * this.cw), y = Math.floor(((e.clientY - rc.top) / rc.height) * this.ch);
+    return x < 0 || y < 0 || x >= this.cw || y >= this.ch ? null : { x, y };
   }
 
   private newEntry(): number {
     return tileEntry(this.selTile, input("#lvH").checked, input("#lvV").checked, Number(select("#lvPal").value) || 0);
   }
 
-  private set(x: number, y: number, entry: number): void {
-    const l = this.cur!, i = y * l.w + x;
-    if (this.entries[i] === entry) return;
-    this.entries[i] = entry;
+  private set(x: number, y: number, value: number): void {
+    if (this.layer === "coll") {
+      const i = y * this.coll!.w + x;
+      if (this.collValues[i] === value) return;
+      this.collValues[i] = value;
+      this.dirty = true;
+      this.drawCollCell($<HTMLCanvasElement>("#lvColl").getContext("2d")!, x, y);
+      return;
+    }
+    const i = y * this.cur!.w + x;
+    if (this.entries[i] === value) return;
+    this.entries[i] = value;
     this.dirty = true;
     this.drawTile(x, y);
   }
@@ -183,10 +282,10 @@ export class LevelEditor {
     if (!this.dirty || !this.cur || !this.rom) return;
     this.dirty = false;
     try {
-      const r = saveMap(this.rom, this.cur, this.entries);
-      $("#lvInfo").textContent += r.relocated
+      const r = this.layer === "coll" ? saveCollision(this.rom, this.cur, this.collValues) : saveMap(this.rom, this.cur, this.entries);
+      this.note(r.relocated
         ? ` Saved: moved to 0x${r.off.toString(16).toUpperCase()} (${r.bytes} bytes; it no longer fit its original ${r.original}).`
-        : ` Saved in place (${r.bytes} of ${r.original} bytes).`;
+        : ` Saved in place (${r.bytes} of ${r.original} bytes).`);
       this.onChange();
     } catch (err) {
       this.toast(String((err as Error).message));
@@ -194,11 +293,20 @@ export class LevelEditor {
     }
   }
 
+  private note(s: string): void {
+    const el = $("#lvInfo");
+    el.textContent = (el.textContent ?? "").replace(/ Saved[^.]*\.[^.]*\)?\./g, "") + s;
+  }
+
   private applyAt(x: number, y: number): void {
     const l = this.cur!;
-    if (this.tool === "paint") this.set(x, y, this.newEntry());
+    if (this.tool === "paint") this.set(x, y, this.layer === "coll" ? this.collVal : this.newEntry());
     else if (this.tool === "erase") this.set(x, y, 0);
     else if (this.tool === "pick") {
+      if (this.layer === "coll") {
+        this.setCollVal(this.collValues[y * this.coll!.w + x]);
+        return;
+      }
       const e = this.entries[y * l.w + x];
       this.selTile = e & 1023;
       input("#lvH").checked = !!((e >> 10) & 1);
@@ -216,7 +324,7 @@ export class LevelEditor {
   }
 
   private updateBox(a: { x: number; y: number }, b: { x: number; y: number }): void {
-    const z = Number(select("#lvZoom").value) * 8, box = $("#lvBox");
+    const z = Number(select("#lvZoom").value) * 8 * this.span, box = $("#lvBox");
     const x0 = Math.min(a.x, b.x), y0 = Math.min(a.y, b.y), x1 = Math.max(a.x, b.x), y1 = Math.max(a.y, b.y);
     box.style.display = "block";
     box.style.left = x0 * z + "px";
@@ -235,6 +343,13 @@ export class LevelEditor {
       if (l) this.selectLevel(l);
     };
     for (const [id, t] of [["#lvPaint", "paint"], ["#lvFill", "fill"], ["#lvPick", "pick"], ["#lvErase", "erase"]] as const) $(id).onclick = () => this.setTool(t);
+    $("#lvLayerTiles").onclick = () => this.setLayer("tiles");
+    $("#lvLayerColl").onclick = () => this.setLayer("coll");
+    input("#lvShowColl").onchange = () => this.drawColl();
+    input("#lvCollVal").onchange = () => {
+      const v = parseInt(input("#lvCollVal").value, 16);
+      this.setCollVal(Number.isFinite(v) ? v : this.collVal);
+    };
     select("#lvZoom").onchange = () => this.applyZoom();
     input("#lvGrid").onchange = () => this.applyZoom();
     select("#lvPal").onchange = () => this.drawPicker();
@@ -266,8 +381,13 @@ export class LevelEditor {
     map.addEventListener("pointermove", (e) => {
       const c = this.cell(e), l = this.cur;
       if (c && l) {
-        const en = this.entries[c.y * l.w + c.x];
-        $("#lvHover").textContent = `(${c.x},${c.y}) entry 0x${en.toString(16).padStart(4, "0")}: tile ${en & 1023}, palette ${en >> 12}${en & 0x400 ? ", hflip" : ""}${en & 0x800 ? ", vflip" : ""}`;
+        if (this.layer === "coll") {
+          const v = this.collValues[c.y * this.coll!.w + c.x];
+          $("#lvHover").textContent = `block (${c.x},${c.y}) collision 0x${v.toString(16).padStart(2, "0")}${COLL_NAMES[v] ? " (" + COLL_NAMES[v] + ")" : ""}`;
+        } else {
+          const en = this.entries[c.y * l.w + c.x];
+          $("#lvHover").textContent = `(${c.x},${c.y}) entry 0x${en.toString(16).padStart(4, "0")}: tile ${en & 1023}, palette ${en >> 12}${en & 0x400 ? ", hflip" : ""}${en & 0x800 ? ", vflip" : ""}`;
+        }
       }
       if (!this.painting || !c) return;
       if (this.tool === "fill" && this.fillStart) this.updateBox(this.fillStart, c);
@@ -278,7 +398,8 @@ export class LevelEditor {
       this.painting = false;
       if (this.tool === "fill" && this.fillStart) {
         const c = this.cell(e) ?? this.fillStart, a = this.fillStart;
-        for (let y = Math.min(a.y, c.y); y <= Math.max(a.y, c.y); y++) for (let x = Math.min(a.x, c.x); x <= Math.max(a.x, c.x); x++) this.set(x, y, this.newEntry());
+        const v = this.layer === "coll" ? this.collVal : this.newEntry();
+        for (let y = Math.min(a.y, c.y); y <= Math.max(a.y, c.y); y++) for (let x = Math.min(a.x, c.x); x <= Math.max(a.x, c.x); x++) this.set(x, y, v);
         this.fillStart = null;
         $("#lvBox").style.display = "none";
       }

@@ -1,5 +1,6 @@
 import { Rom, Write } from "./rom";
 import { lz77Decode, lz77Encode } from "./lz77";
+import { rleDecode, rleEncode } from "./rle";
 
 /*
  * Level (room) tile layers. Verified on the USA ROM:
@@ -10,9 +11,9 @@ import { lz77Decode, lz77Encode } from "./lz77";
  *  - the map is w*h 16-bit tile entries: tile 0-9, hflip 10, vflip 11, palette row 12-15
  */
 
-export interface LevelTables { scene: number; tileAssets: number; palAssets: number }
+export interface LevelTables { scene: number; tileAssets: number; palAssets: number; collIndexBase: number }
 /** USA ROM (B8KE). */
-export const USA_TABLES: LevelTables = { scene: 0x9331ac, tileAssets: 0xd6499c, palAssets: 0xd63288 };
+export const USA_TABLES: LevelTables = { scene: 0x9331ac, tileAssets: 0xd6499c, palAssets: 0xd63288, collIndexBase: 42 };
 
 export interface Level {
   tag: number;
@@ -133,3 +134,56 @@ export function saveMap(rom: Rom, level: Level, entries: Uint16Array): SaveResul
 
 export const tileEntry = (tile: number, hflip: boolean, vflip: boolean, palRow: number): number =>
   (tile & 1023) | (hflip ? 1 << 10 : 0) | (vflip ? 1 << 11 : 0) | ((palRow & 15) << 12);
+
+// ---- collision ----
+/*
+ * Each room also has a collision map: one byte per 16x16-pixel block (half the tile map's resolution),
+ * stored with BIOS run-length compression. The scene entry's u16 at +0x18 is the collision id; the same
+ * asset table used for palettes holds it at index (collIndexBase + id). That entry points at a two-word
+ * descriptor [ptr to RLE data][ptr to the end of that data].
+ * Values seen across the game: 0 empty, 0x0D solid, 5-8 slopes (shape only); the rest are not yet understood.
+ */
+export interface CollisionInfo { values: Uint8Array; w: number; h: number; off: number; used: number; desc: number }
+
+function collisionDesc(rom: Rom, tag: number, t: LevelTables): number {
+  const a = t.scene + tag * 40 + 0x18;
+  if (a + 2 > rom.length) return -1;
+  const id = rom.u16(a);
+  if (id === 0xffff) return -1;
+  const p = rom.u32(t.palAssets + (t.collIndexBase + id) * 4);
+  return rom.isPtr(p) ? p & 0xffffff : -1;
+}
+
+export function readCollision(rom: Rom, level: Level, t: LevelTables = USA_TABLES): CollisionInfo | null {
+  const desc = collisionDesc(rom, level.tag, t);
+  if (desc < 0) return null;
+  const ptr = rom.u32(desc);
+  if (!rom.isPtr(ptr)) return null;
+  const off = ptr & 0xffffff;
+  const w = level.w >> 1, h = level.h >> 1;
+  const r = rleDecode(rom.data, off);
+  if (!r || r.data.length !== w * h) return null;
+  return { values: r.data, w, h, off, used: r.used, desc };
+}
+
+/** Recompresses and writes the collision map; relocates into free space if it grew. */
+export function saveCollision(rom: Rom, level: Level, values: Uint8Array, t: LevelTables = USA_TABLES): SaveResult {
+  const cur = readCollision(rom, level, t);
+  if (!cur) throw new Error("Could not read the current collision map from the ROM");
+  const enc = rleEncode(values);
+  const writes: Write[] = [];
+  const put32 = (a: number, v: number): void => { for (let k = 0; k < 4; k++) writes.push({ off: a + k, val: (v >> (8 * k)) & 255 }); };
+  let off = cur.off, relocated = false;
+  if (enc.length > cur.used) {
+    const free = findFreeSpace(rom, enc.length + 4);
+    if (free < 0) throw new Error("Not enough free space left in the ROM for this edit");
+    off = free;
+    relocated = true;
+    const oldPtr = 0x08000000 + cur.off;
+    for (let a = 0; a + 4 <= rom.length; a += 4) if (rom.u32(a) === oldPtr) put32(a, 0x08000000 + free);
+    put32(cur.desc + 4, 0x08000000 + free + ((enc.length + 3) & ~3));   // end-of-data pointer
+  }
+  for (let i = 0; i < enc.length; i++) writes.push({ off: off + i, val: enc[i] });
+  rom.writeBytes(writes);
+  return { relocated, off, bytes: enc.length, original: cur.used };
+}
