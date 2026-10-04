@@ -20,6 +20,9 @@ Grab `KirbySpriteStudio.html` (and optionally `KirbyPaletteLab.html`) from the
   automatic shading, point a slot at a different palette row, or open the full 15-color editor.
 - Hue, saturation and brightness, grayscale, invert, channel swap; undo; save and load edits; export ROM or IPS.
 
+## Level editor (experimental)
+The **Levels** tab lists 286 rooms across 9 areas. Pick a room, then paint, fill, pick or erase tiles on its main tile layer, with flips and palette rows. Edits save into the ROM copy on every stroke (undoable). Maps are recompressed automatically; the ~80% that fit their original slot are written in place, the rest are moved into free space at the end of the ROM and their pointer is updated. Collision and enemy placement are not editable yet, and the in-game effect of an edited room is still being verified, so treat it as experimental.
+
 ## Palette Lab
 Raw palette and tile viewer for exploring arbitrary ROM data (palette scanner, LZ77 tile scanner, find-by-color).
 

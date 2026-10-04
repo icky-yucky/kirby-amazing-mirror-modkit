@@ -21,7 +21,42 @@
   <button id="btnRom" class="primary" disabled>Download modded ROM</button>
 </header>
 
-<main>
+<nav id="tabs">
+  <button id="tabSprites" class="tab on">Sprites</button>
+  <button id="tabLevels" class="tab">Levels</button>
+</nav>
+
+<main id="levelMain" hidden>
+  <section id="lvTools">
+    <h2>Level</h2>
+    <div class="row"><label>Area <select id="lvArea"></select></label><label>Room <select id="lvRoom"></select></label></div>
+    <div class="note" id="lvInfo">Open a ROM to edit its levels.</div>
+    <h2 style="margin-top:12px">Tool</h2>
+    <div class="row">
+      <button id="lvPaint" class="on" title="Paint the selected tile">Paint</button>
+      <button id="lvFill" title="Drag a rectangle to fill it with the selected tile">Fill box</button>
+      <button id="lvPick" title="Click a map tile to select it">Pick</button>
+      <button id="lvErase" title="Clear tiles (tile 0)">Erase</button>
+    </div>
+    <div class="row">
+      <label class="small"><input id="lvH" type="checkbox"> flip horizontally</label>
+      <label class="small"><input id="lvV" type="checkbox"> flip vertically</label>
+    </div>
+    <div class="row"><label>Palette row <select id="lvPal"></select></label><label>Zoom <select id="lvZoom"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></label></div>
+    <div class="row"><label class="small"><input id="lvGrid" type="checkbox"> show tile grid</label></div>
+    <h2 style="margin-top:12px">Tiles</h2>
+    <div id="lvPickerWrap"><canvas id="lvPicker" width="256" height="64"></canvas><div id="lvPickSel"></div></div>
+    <div id="lvTileInfo" class="small mono dim">&nbsp;</div>
+  </section>
+  <section id="lvMapSec">
+    <h2>Map <span class="dim small" id="lvTitle"></span></h2>
+    <div id="lvScroll"><div id="lvStage"><canvas id="lvMap" width="64" height="64"></canvas><div id="lvBox"></div></div></div>
+    <div id="lvHover" class="small mono dim" style="min-height:18px;margin-top:6px">&nbsp;</div>
+    <div class="note">Edits save straight into the ROM copy (and are undoable). The map is recompressed on every stroke; if it no longer fits its original slot it is moved to free space at the end of the ROM automatically. Solid and enemy data are not editable yet, so tiles you paint change the look; whether they are solid depends on the game's tile rules.</div>
+  </section>
+</main>
+
+<main id="spriteMain">
   <div id="welcome">
     <h2 style="font-size:20px;color:var(--text);text-transform:none">Browse every sprite in your Kirby &amp; the Amazing Mirror ROM and recolor it</h2>
     <p>Open your own ROM (or drop it on this page). Pick a sprite, pick an animation and frame, see the fully assembled sprite, then click any pixel to pick its color and change it.</p>

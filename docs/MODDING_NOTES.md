@@ -56,3 +56,11 @@ which assets other scenes use (only 14 scenes match the tile-descriptor pattern 
   a key itself (`-PressKey Up`) so only one GDB client is connected. Two clients at once interfere.
 - `tools/dbg/release.ps1` clears leftover breakpoints and resumes the game if a script dies mid-run.
 - Breakpoints on constantly used functions (CpuSet) stall the game; keep them to rare calls.
+
+## Level editor notes
+- 286 rooms resolve a map, tileset and palette through the scene table (see Level data). Scene number = area * 100 + room.
+- Free space: the ROM ends with about 835 KB of 0xFF padding starting near 0xF330A8. Relocated maps are written there.
+- BIOS LZ77 note: the encoder never emits distance-1 matches so the stream is safe for both the WRAM and VRAM decompressors.
+- Open question: after entering a stage the game made no further BIOS decompress calls for the map, and a save state taken in
+  the hub still showed the original map when run with an edited ROM. The leading explanation is that the next room's map is
+  decompressed while the player is still in the hub (state RAM already held it), so edited maps must be tested from a fresh boot.

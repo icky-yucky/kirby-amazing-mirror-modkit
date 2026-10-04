@@ -14,7 +14,8 @@ Reverse engineering is done one system at a time; each system gets documented fo
 - [ ] Lives icon / HUD palettes
 - [ ] Copy abilities (stats, projectiles, palette per ability)
 - [ ] Items and collectibles (spray paints, treasures, food)
-- [ ] Rooms and maps of the Mirror World: tile layers located (see notes); collision, doors and enemy placement still to find
+- [x] Room tile layers: viewer and editor (experimental)
+- [ ] Rooms: collision, doors and enemy placement still to find
 - [ ] Text and dialogue
 - [ ] Music and sound effects
 - [ ] Engine symbol map (radare2 project) for the object system, VBlank handler, palette/DMA code

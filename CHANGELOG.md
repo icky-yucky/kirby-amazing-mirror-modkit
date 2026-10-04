@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+- Level editor (experimental): browse 286 rooms, paint/fill/pick/erase tiles, automatic LZ77 recompression with relocation into free space.
+- Faster LZ77 encoder (hash chains), tests against the real ROM when available (skipped otherwise).
+- `scripts/add-platform.ts`: example of using the core library from Node.
+
 ## 0.3.1
 - Kirby colors: "Meta Knight colors" checkbox on the baseline Kirby slot (colors only; uncheck restores pink).
 

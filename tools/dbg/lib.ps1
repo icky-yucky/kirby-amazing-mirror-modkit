@@ -7,7 +7,7 @@ public class G {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int cmd);
-  public static void Front(IntPtr h){ ShowWindow(h,9); keybd_event(0x12,0,0,0); keybd_event(0x12,0,2,0); SetForegroundWindow(h); }
+  public static void Front(IntPtr h){ ShowWindow(h,9); if(GetForegroundWindow()==h) return; SetForegroundWindow(h); Thread.Sleep(60); if(GetForegroundWindow()==h) return; keybd_event(0x12,0,0,0); keybd_event(0x12,0,2,0); SetForegroundWindow(h); Thread.Sleep(80); keybd_event(0x1B,0,0,0); keybd_event(0x1B,0,2,0); }
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L,T,R,B; }
   public static void Tap(byte vk, int ms){ keybd_event(vk,0,0,0); Thread.Sleep(ms); keybd_event(vk,0,2,0); Thread.Sleep(60); }
@@ -23,7 +23,7 @@ public class G {
   public void WriteMem(uint addr, byte[] d){ StringBuilder sb=new StringBuilder(); foreach(byte b in d) sb.Append(b.ToString("x2")); Send("M"+addr.ToString("x")+","+d.Length.ToString("x")+":"+sb.ToString()); Recv(); }
 }
 '@ -ReferencedAssemblies System.Windows.Forms, System.Drawing
-$script:VK = @{ Enter=0x0D; X=0x58; Z=0x5A; Right=0x27; Left=0x25; Up=0x26; Down=0x28; A=0x41; S=0x53; BackSpace=0x08 }
+$script:VK = @{ Enter=0x0D; Esc=0x1B; X=0x58; Z=0x5A; Right=0x27; Left=0x25; Up=0x26; Down=0x28; A=0x41; S=0x53; BackSpace=0x08 }
 function FromHex($s){ $b = New-Object byte[] ($s.Length/2); for($i=0;$i -lt $b.Length;$i++){ $b[$i]=[Convert]::ToByte($s.Substring($i*2,2),16) }; ,$b }
 function Get-Regs($g){ $g.Send("g"); $regs = $g.Recv(); for ($k = 0; $k -lt 17; $k++) { [BitConverter]::ToUInt32((FromHex $regs.Substring($k*8, 8)),0) } }
 function Key($h,$vk,$ms=90){ [G]::Front($h); Start-Sleep -Milliseconds 30; if ([G]::GetForegroundWindow() -eq $h) { [G]::Tap([byte]$vk,$ms) } }

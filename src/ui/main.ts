@@ -5,6 +5,7 @@ import {
 import { Project, SHARED_ROW, slotName } from "../core/project";
 import { Rom, Write } from "../core/rom";
 import { Anim, Rendered, renderFrame } from "../core/sprites";
+import { LevelEditor } from "./levels";
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string): T => document.querySelector(s) as T;
 const input = (s: string): HTMLInputElement => $<HTMLInputElement>(s);
@@ -365,6 +366,8 @@ function renderSlots(): void {
   });
 }
 
+const LE = new LevelEditor(() => afterEdit(), (m) => toast(m));
+
 // ---------- refresh ----------
 function afterEdit(): void {
   const row = activeRow();
@@ -376,6 +379,7 @@ function afterEdit(): void {
   $<HTMLButtonElement>("#btnUndo").disabled = !rom.canUndo;
   const ch = rom.anyChanged();
   for (const id of ["#btnReset", "#btnSaveEdits", "#btnIps", "#btnRom"]) $<HTMLButtonElement>(id).disabled = !ch;
+  if (!$("#levelMain").hidden) LE.refresh();
 }
 
 function scopeCols(): number[] {
@@ -427,6 +431,7 @@ function loadRom(buf: ArrayBuffer, name: string): void {
   for (const id of ["#colL", "#colM", "#colR"]) $(id).hidden = false;
   $<HTMLButtonElement>("#btnLoadEdits").disabled = false;
   $("#colK").hidden = !P.slots;
+  LE.open(rom);
   buildGroups();
   const first = [...S.groups.keys()].sort((a, b) => a - b)[0];
   select("#selGroup").value = String(first);
@@ -546,3 +551,14 @@ addEventListener("keydown", (e) => {
 
 // Handy for automated testing and debugging in the browser console.
 (window as unknown as { KSS: unknown }).KSS = { loadRom, S, get P() { return P; }, get rom() { return rom; } };
+
+// ---------- tabs ----------
+function showTab(levels: boolean): void {
+  $("#spriteMain").hidden = levels;
+  $("#levelMain").hidden = !levels;
+  $("#tabSprites").classList.toggle("on", !levels);
+  $("#tabLevels").classList.toggle("on", levels);
+  if (levels && rom) LE.refresh();
+}
+$("#tabSprites").onclick = () => showTab(false);
+$("#tabLevels").onclick = () => showTab(true);

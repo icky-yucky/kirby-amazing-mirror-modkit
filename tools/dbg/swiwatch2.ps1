@@ -3,7 +3,7 @@
 # usage: swiwatch2.ps1 -MaxSec 40 -PressKey Up -PressAt 3
 param([int]$MaxSec = 40, [string]$Out = "$PSScriptRoot\swi2.txt", [string]$PressKey = "", [int]$PressAt = 3)
 . "$PSScriptRoot\lib.ps1"
-$sites = "8159304","8159308","8159314","8159318","818005a","818347e","81e3366","82125e6","8262ff8","82701e0","8290aae","82c14ee","81684ee","81728e2","818fbf4","825f70a","825f722","825f74a","82651fe","826fe92","8271f54","828088e","828ebba"
+$sites = "8159304","8159308","8159314","8159318","805deb0","805dedc","805df08","818005a","818347e","81e3366","82125e6","8262ff8","82701e0","8290aae","82c14ee","8362dca","8369b16","83b4254","81684ee","81728e2","818fbf4","825f70a","825f722","825f74a","82651fe","826fe92","8271f54","828088e","828ebba","82ac832","836a8e4","8168076","8188d3c","81ea0d2","826497c","826fece","8272178","82b804a","82beb0a","82cd282","812df10","81e7306","81eb4bc","8265640","828dc0a","82c4a08","836bcfa"
 $g = New-Object G; $g.Connect(2345); try { $null = $g.Recv() } catch {}
 foreach ($a in $sites) { $g.Send("Z0,$a,2"); try { $null = $g.Recv() } catch {} }
 "started" | Set-Content $Out
